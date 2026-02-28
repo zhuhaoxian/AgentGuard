@@ -1,0 +1,902 @@
+<script setup lang="ts">
+/**
+ * Agent 列表页面
+ *
+ * @author zhuhx
+ */
+import { ref, onMounted, computed, watch } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { View, Hide, CopyDocument } from '@element-plus/icons-vue'
+import * as agentApi from '@/api/agent'
+import * as policyApi from '@/api/policy'
+import type { Agent, AgentCreateDTO, AgentUpdateDTO } from '@/types/agent'
+import type { Policy } from '@/types/policy'
+
+const loading = ref(false)
+const agents = ref<Agent[]>([])
+const total = ref(0)
+const queryParams = ref({
+  current: 1,
+  size: 10,
+  keyword: ''
+})
+
+const dialogVisible = ref(false)
+const isEditMode = ref(false)
+const editingAgentId = ref<string | null>(null)
+const activeTab = ref('basic')
+const formData = ref<AgentCreateDTO>({
+  name: '',
+  description: '',
+  llmProvider: 'openai',
+  llmApiKey: '',
+  llmBaseUrl: '',
+  llmModel: ''
+})
+
+// LLM供应商默认配置
+const providerDefaults: Record<string, { baseUrl: string; model: string; models: string[] }> = {
+  openai: {
+    baseUrl: 'https://api.openai.com',
+    model: 'gpt-5-mini',
+    models: ['gpt-5-mini', 'gpt-5-nano', 'gpt-5', 'gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-4', 'gpt-3.5-turbo']
+  },
+  anthropic: {
+    baseUrl: 'https://api.anthropic.com',
+    model: 'claude-3-5-sonnet-20241022',
+    models: ['claude-3-5-sonnet-20241022', 'claude-3-5-haiku-20241022', 'claude-3-opus-20240229', 'claude-3-sonnet-20240229', 'claude-3-haiku-20240307']
+  },
+  azure: {
+    baseUrl: '',
+    model: 'gpt-4',
+    models: ['gpt-4', 'gpt-4-turbo', 'gpt-35-turbo']
+  },
+  nvidia: {
+    baseUrl: 'https://integrate.api.nvidia.com',
+    model: 'z-ai/glm4.7',
+    models: ['z-ai/glm4.7', 'moonshotai/kimi-k2.5', 'moonshotai/kimi-k2-thinking', 'minimaxai/minimax-m2.1', 'minimaxai/minimax-m2']
+  }
+}
+
+// 获取当前供应商的模型列表
+const availableModels = computed(() => {
+  const provider = formData.value.llmProvider || 'openai'
+  return providerDefaults[provider]?.models || []
+})
+
+// 监听供应商变化，自动填充默认配置
+watch(() => formData.value.llmProvider, (newProvider) => {
+  // 只在新建模式下自动填充
+  if (!isEditMode.value && newProvider && providerDefaults[newProvider]) {
+    const defaults = providerDefaults[newProvider]
+    if (defaults.baseUrl) {
+      formData.value.llmBaseUrl = defaults.baseUrl
+    }
+    if (defaults.model) {
+      formData.value.llmModel = defaults.model
+    }
+  }
+})
+
+// 表单验证规则
+const formRules = {
+  name: [{ required: true, message: '请输入Agent名称', trigger: 'blur' }],
+  llmProvider: [{ required: true, message: '请选择LLM提供商', trigger: 'change' }],
+  llmApiKey: [
+    {
+      required: true,
+      validator: (_rule: any, value: any, callback: any) => {
+        // 编辑模式下，如果字段为空则不验证（保持原密钥）
+        if (isEditMode.value && !value) {
+          callback()
+        } else if (!isEditMode.value && !value) {
+          // 新建模式下必填
+          callback(new Error('请输入LLM API密钥'))
+        } else {
+          callback()
+        }
+      },
+      trigger: 'blur'
+    }
+  ],
+  llmBaseUrl: [{ required: true, message: '请输入LLM Base URL', trigger: 'blur' }],
+  llmModel: [{ required: true, message: '请输入默认默认模型 ID', trigger: 'blur' }]
+}
+
+const formRef = ref()
+
+// 计算实际的 LLM API 端点
+const computedLlmEndpoint = computed(() => {
+  const baseUrl = formData.value.llmBaseUrl?.trim() || ''
+  if (!baseUrl) return ''
+
+  // 如果以 # 结尾，强制使用输入的地址（去掉 #）
+  if (baseUrl.endsWith('#')) {
+    return baseUrl.slice(0, -1)
+  }
+
+  // 确定端点路径
+  const provider = formData.value.llmProvider || 'openai'
+  const endpoint = provider === 'anthropic' ? 'messages' : 'chat/completions'
+
+  // 如果以 / 结尾，忽略 v1 版本，直接拼接端点
+  if (baseUrl.endsWith('/')) {
+    return baseUrl + endpoint
+  }
+
+  // 否则，默认拼接 /v1/端点
+  return baseUrl + '/v1/' + endpoint
+})
+
+// 策略绑定相关
+const allPolicies = ref<Policy[]>([])
+const selectedPolicyIds = ref<string[]>([])
+
+// 密钥可见性状态管理
+const visibleKeys = ref<Set<string>>(new Set())
+
+// 测试连接状态
+const testingConnection = ref(false)
+
+/**
+ * 脱敏显示 API Key
+ */
+function maskApiKey(apiKey: string): string {
+  if (!apiKey || apiKey.length < 10) return apiKey
+  const prefixLength = 7
+  const suffixLength = 4
+  const prefix = apiKey.substring(0, prefixLength)
+  const suffix = apiKey.substring(apiKey.length - suffixLength)
+  const masked = '*'.repeat(16)
+  return `${prefix}${masked}${suffix}`
+}
+
+/**
+ * 切换密钥可见性
+ */
+function toggleKeyVisibility(agentId: string) {
+  if (visibleKeys.value.has(agentId)) {
+    visibleKeys.value.delete(agentId)
+  } else {
+    visibleKeys.value.add(agentId)
+  }
+}
+
+/**
+ * 判断密钥是否可见
+ */
+function isKeyVisible(agentId: string): boolean {
+  return visibleKeys.value.has(agentId)
+}
+
+/**
+ * 复制密钥到剪贴板
+ */
+async function copyApiKey(apiKey: string) {
+  try {
+    await navigator.clipboard.writeText(apiKey)
+    ElMessage.success('密钥已复制到剪贴板')
+  } catch (e) {
+    ElMessage.error('复制失败，请手动复制')
+  }
+}
+
+async function fetchData() {
+  loading.value = true
+  try {
+    const res = await agentApi.getAgentList(queryParams.value)
+    agents.value = res.records
+    total.value = res.total
+  } finally {
+    loading.value = false
+  }
+}
+
+async function fetchAllPolicies() {
+  try {
+    // 只获取 Agent 级策略
+    const res = await policyApi.getPolicyList({ current: 1, size: 100, scope: 'AGENT' })
+    allPolicies.value = res.records
+  } catch (e) {
+    // error handled by interceptor
+  }
+}
+
+function resetForm() {
+  const defaultProvider = 'openai'
+  const defaults = providerDefaults[defaultProvider]
+
+  formData.value = {
+    name: '',
+    description: '',
+    llmProvider: defaultProvider,
+    llmApiKey: '',
+    llmBaseUrl: defaults.baseUrl,
+    llmModel: defaults.model
+  }
+  selectedPolicyIds.value = []
+  activeTab.value = 'basic'
+  isEditMode.value = false
+  editingAgentId.value = null
+
+  // 清除表单验证状态
+  if (formRef.value) {
+    formRef.value.clearValidate()
+  }
+}
+
+async function handleOpenCreate() {
+  resetForm()
+  // 立即打开对话框，提升响应速度
+  dialogVisible.value = true
+  // 异步加载策略列表
+  loading.value = true
+  try {
+    await fetchAllPolicies()
+  } finally {
+    loading.value = false
+  }
+}
+
+async function handleOpenEdit(agent: Agent) {
+  isEditMode.value = true
+  editingAgentId.value = agent.id
+  formData.value = {
+    name: agent.name,
+    description: agent.description || '',
+    llmProvider: agent.llmProvider || 'openai',
+    llmApiKey: agent.llmApiKey || '', // 后端已返回脱敏的密钥
+    llmBaseUrl: agent.llmBaseUrl || 'https://api.openai.com/v1',
+    llmModel: agent.llmModel || 'gpt-3.5-turbo'
+  }
+
+  // 立即打开对话框，提升响应速度
+  dialogVisible.value = true
+
+  // 并行加载策略数据
+  loading.value = true
+  try {
+    const [_, boundPolicies] = await Promise.all([
+      fetchAllPolicies(),
+      agentApi.getAgentPolicies(agent.id)
+    ])
+    selectedPolicyIds.value = boundPolicies.map(p => p.id)
+  } finally {
+    loading.value = false
+  }
+}
+
+async function handleTestConnection() {
+  // 检查必填字段
+  if (!formData.value.llmProvider || !formData.value.llmBaseUrl || !formData.value.llmModel) {
+    ElMessage.warning('请先填写 LLM 提供商、API 地址和默认模型 ID')
+    return
+  }
+
+  // 检查 API Key
+  const apiKey = formData.value.llmApiKey
+  if (!apiKey || !apiKey.trim()) {
+    if (!isEditMode.value || !editingAgentId.value) {
+      ElMessage.warning('请填写 API 密钥')
+      return
+    }
+  }
+
+  testingConnection.value = true
+  try {
+    const requestData: any = {
+      llmProvider: formData.value.llmProvider,
+      llmBaseUrl: formData.value.llmBaseUrl,
+      llmModel: formData.value.llmModel
+    }
+
+    // 如果是编辑模式且 API Key 是脱敏状态，发送 agentId
+    if (isEditMode.value && editingAgentId.value && (!apiKey || apiKey.includes('***'))) {
+      requestData.agentId = editingAgentId.value
+    } else if (apiKey && apiKey.trim() && !apiKey.includes('***')) {
+      // 如果提供了新的完整密钥，发送密钥
+      requestData.llmApiKey = apiKey
+    } else if (isEditMode.value && editingAgentId.value) {
+      // 编辑模式下，即使没有修改密钥，也发送 agentId
+      requestData.agentId = editingAgentId.value
+    } else {
+      ElMessage.warning('请填写 API 密钥')
+      return
+    }
+
+    const result = await agentApi.testLlmConnection(requestData)
+
+    if (result.success) {
+      ElMessage.success(result.message + (result.actualModel ? `（模型：${result.actualModel}）` : ''))
+    } else {
+      ElMessage.error(result.message)
+    }
+  } catch (error: any) {
+    ElMessage.error('测试连接失败：' + (error.message || '未知错误'))
+  } finally {
+    testingConnection.value = false
+  }
+}
+
+async function handleSubmit() {
+  // 验证表单
+  if (!formRef.value) return
+
+  try {
+    await formRef.value.validate()
+  } catch (e) {
+    ElMessage.warning('请填写完整的表单信息')
+    return
+  }
+
+  try {
+    if (isEditMode.value && editingAgentId.value) {
+      // 更新 Agent 基本信息
+      const updateData: AgentUpdateDTO = {
+        name: formData.value.name,
+        description: formData.value.description,
+        llmProvider: formData.value.llmProvider,
+        llmBaseUrl: formData.value.llmBaseUrl,
+        llmModel: formData.value.llmModel
+      }
+
+      // 检查API Key是否被修改（如果仍然是脱敏状态，则不更新）
+      const apiKey = formData.value.llmApiKey
+      if (apiKey && apiKey.trim() && !apiKey.includes('***')) {
+        // 用户输入了新的完整密钥
+        updateData.llmApiKey = apiKey
+      }
+      // 如果是脱敏状态（包含***）或为空，则不发送llmApiKey字段，保持原密钥不变
+
+      await agentApi.updateAgent(editingAgentId.value, updateData)
+
+      // 更新策略绑定
+      await updatePolicyBindings(editingAgentId.value)
+
+      ElMessage.success('更新成功')
+    } else {
+      // 创建 Agent
+      const newAgent = await agentApi.createAgent(formData.value)
+
+      // 绑定策略
+      if (selectedPolicyIds.value.length > 0) {
+        await Promise.all(
+          selectedPolicyIds.value.map(policyId =>
+            agentApi.bindPolicy(newAgent.id, policyId)
+          )
+        )
+      }
+
+      ElMessage.success('创建成功')
+    }
+    dialogVisible.value = false
+    resetForm()
+    fetchData()
+  } catch (e) {
+    // error handled by interceptor
+  }
+}
+
+/**
+ * 更新策略绑定（对比差异，只调用需要的接口）
+ */
+async function updatePolicyBindings(agentId: string) {
+  const currentPolicies = await agentApi.getAgentPolicies(agentId)
+  const currentPolicyIds = new Set(currentPolicies.map(p => p.id))
+  const newPolicyIds = new Set(selectedPolicyIds.value)
+  
+  // 需要解绑的策略
+  const toUnbind = [...currentPolicyIds].filter(id => !newPolicyIds.has(id))
+  // 需要绑定的策略
+  const toBind = [...newPolicyIds].filter(id => !currentPolicyIds.has(id))
+  
+  await Promise.all([
+    ...toUnbind.map(policyId => agentApi.unbindPolicy(agentId, policyId)),
+    ...toBind.map(policyId => agentApi.bindPolicy(agentId, policyId))
+  ])
+}
+
+async function handleDelete(id: string) {
+  try {
+    await ElMessageBox.confirm('确定要删除该Agent吗？删除后无法恢复。', '删除确认', {
+      type: 'warning',
+      confirmButtonText: '确定删除',
+      cancelButtonText: '取消'
+    })
+    await agentApi.deleteAgent(id)
+    ElMessage.success('删除成功')
+    fetchData()
+  } catch (e) {
+    // user cancelled or error handled by interceptor
+  }
+}
+
+async function handleToggleStatus(agent: Agent) {
+  // 注意：el-switch 的 @change 事件触发时，agent.status 已经是切换后的新值
+  const newStatus = agent.status
+  const isEnabled = newStatus === 1
+  const action = isEnabled ? '启用' : '禁用'
+
+  try {
+    // 弹窗确认
+    await ElMessageBox.confirm(
+      `确定要${action}该Agent吗？${!isEnabled ? '禁用后将无法使用该Agent。' : ''}`,
+      `${action}确认`,
+      {
+        type: 'warning',
+        confirmButtonText: `确定${action}`,
+        cancelButtonText: '取消'
+      }
+    )
+
+    // 执行启用/禁用操作
+    if (isEnabled) {
+      await agentApi.enableAgent(agent.id)
+      ElMessage.success('已启用')
+    } else {
+      await agentApi.disableAgent(agent.id)
+      ElMessage.success('已禁用')
+    }
+
+    fetchData()
+  } catch (e: any) {
+    // user cancelled or error handled by interceptor, revert switch state
+    agent.status = newStatus === 1 ? 0 : 1
+  }
+}
+
+function handleSearch() {
+  queryParams.value.current = 1
+  fetchData()
+}
+
+function handlePageChange(page: number) {
+  queryParams.value.current = page
+  fetchData()
+}
+
+/**
+ * 每页条数变化
+ */
+function handleSizeChange(size: number) {
+  queryParams.value.size = size
+  queryParams.value.current = 1
+  fetchData()
+}
+
+function handleDialogClose() {
+  resetForm()
+}
+
+const policyTypeMap: Record<string, { label: string; type: 'primary' | 'success' | 'warning' | 'info' | 'danger' }> = {
+  ACCESS_CONTROL: { label: '访问控制', type: 'primary' },
+  APPROVAL: { label: '审批', type: 'danger' },
+  RATE_LIMIT: { label: '频率限制', type: 'info' }
+}
+
+function getPolicyTypeLabel(type: string) {
+  return policyTypeMap[type]?.label || type
+}
+
+function getPolicyTypeTagType(type: string): 'primary' | 'success' | 'warning' | 'info' | 'danger' {
+  return policyTypeMap[type]?.type || 'info'
+}
+
+/**
+ * 切换策略选择状态
+ */
+function togglePolicySelection(policyId: string) {
+  const index = selectedPolicyIds.value.indexOf(policyId)
+  if (index > -1) {
+    // 已选中，取消选择
+    selectedPolicyIds.value.splice(index, 1)
+  } else {
+    // 未选中，添加选择
+    selectedPolicyIds.value.push(policyId)
+  }
+}
+
+onMounted(() => {
+  fetchData()
+})
+</script>
+
+<template>
+  <div class="agent-page">
+    <el-card>
+      <template #header>
+        <div class="card-header">
+          <span>Agent 列表</span>
+          <el-button type="primary" @click="handleOpenCreate">新建 Agent</el-button>
+        </div>
+      </template>
+
+      <el-form :inline="true" @submit.prevent="handleSearch">
+        <el-form-item>
+          <el-input v-model="queryParams.keyword" placeholder="搜索Agent名称" clearable />
+        </el-form-item>
+        <el-form-item>
+          <el-button type="primary" @click="handleSearch">搜索</el-button>
+        </el-form-item>
+      </el-form>
+
+      <el-table :data="agents" v-loading="loading" stripe>
+        <el-table-column prop="name" label="名称" width="200" />
+        <el-table-column label="密钥" width="280">
+          <template #default="{ row }">
+            <div class="api-key-cell">
+              <span class="api-key-text">
+                {{ isKeyVisible(row.id) ? row.apiKey : maskApiKey(row.apiKey) }}
+              </span>
+              <div class="api-key-actions">
+                <el-icon
+                  class="action-icon"
+                  @click="toggleKeyVisibility(row.id)"
+                  :title="isKeyVisible(row.id) ? '隐藏密钥' : '显示密钥'"
+                >
+                  <View v-if="!isKeyVisible(row.id)" />
+                  <Hide v-else />
+                </el-icon>
+                <el-icon
+                  class="action-icon"
+                  @click="copyApiKey(row.apiKey)"
+                  title="复制密钥"
+                >
+                  <CopyDocument />
+                </el-icon>
+              </div>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column label="绑定策略" width="120">
+          <template #default="{ row }">
+            <el-popover
+              v-if="row.policies && row.policies.length > 0"
+              placement="top"
+              :width="300"
+              trigger="hover"
+            >
+              <template #reference>
+                <el-tag type="primary" style="cursor: pointer">
+                  {{ row.policies.length }} 个策略
+                </el-tag>
+              </template>
+              <div class="policy-popover">
+                <div class="policy-popover-title">绑定的策略</div>
+                <div
+                  v-for="policy in row.policies"
+                  :key="policy.id"
+                  class="policy-popover-item"
+                >
+                  <span :class="{ 'policy-disabled': !policy.enabled }">
+                    {{ policy.name }}
+                  </span>
+                  <el-tag
+                    :type="policy.enabled ? 'success' : 'info'"
+                    size="small"
+                    style="margin-left: 8px"
+                  >
+                    {{ policy.enabled ? '已启用' : '未启用' }}
+                  </el-tag>
+                </div>
+              </div>
+            </el-popover>
+            <span v-else style="color: var(--el-text-color-secondary)">未绑定</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="description" label="描述" show-overflow-tooltip />
+        <el-table-column prop="createdAt" label="创建时间" width="180" />
+        <el-table-column label="状态" width="80" fixed="right">
+          <template #default="{ row }">
+            <el-switch
+              v-model="row.status"
+              :active-value="1"
+              :inactive-value="0"
+              @change="handleToggleStatus(row)"
+            />
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="150" fixed="right">
+          <template #default="{ row }">
+            <el-button link type="primary" @click="handleOpenEdit(row)">编辑</el-button>
+            <el-button link type="danger" @click="handleDelete(row.id)">删除</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+
+      <el-pagination
+        v-model:current-page="queryParams.current"
+        v-model:page-size="queryParams.size"
+        :total="total"
+        :page-sizes="[10, 20, 50, 100]"
+        layout="total, sizes, prev, pager, next, jumper"
+        style="margin-top: 20px; justify-content: flex-end"
+        @current-change="handlePageChange"
+        @size-change="handleSizeChange"
+      />
+    </el-card>
+
+    <!-- 新建/编辑 Agent 弹窗 -->
+    <el-dialog
+      v-model="dialogVisible"
+      :title="isEditMode ? '编辑 Agent' : '新建 Agent'"
+      width="600px"
+      @closed="handleDialogClose"
+    >
+      <el-tabs v-model="activeTab">
+        <el-tab-pane label="基本信息" name="basic">
+          <el-form ref="formRef" :model="formData" :rules="formRules" label-width="120px" style="padding: 20px 0">
+            <el-form-item label="名称" prop="name">
+              <el-input v-model="formData.name" placeholder="请输入Agent名称" />
+            </el-form-item>
+            <el-form-item label="描述">
+              <el-input v-model="formData.description" type="textarea" :rows="3" placeholder="请输入描述信息" />
+            </el-form-item>
+
+            <el-divider content-position="left">LLM 配置</el-divider>
+
+            <el-form-item label="提供商" prop="llmProvider">
+              <el-select v-model="formData.llmProvider" placeholder="选择LLM提供商" style="width: 100%">
+                <el-option label="OpenAI" value="openai" />
+                <el-option label="Anthropic" value="anthropic" />
+                <el-option label="NVIDIA" value="nvidia" />
+                <el-option label="Azure OpenAI" value="azure" />
+              </el-select>
+            </el-form-item>
+
+            <el-form-item label="API 密钥" prop="llmApiKey">
+              <el-input
+                v-model="formData.llmApiKey"
+                placeholder="API 密钥"
+              />
+            </el-form-item>
+
+            <el-form-item label="API 地址" prop="llmBaseUrl">
+              <el-input v-model="formData.llmBaseUrl" placeholder="API 地址" />
+              <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 4px;">
+                <div style="font-size: 12px; color: var(--el-text-color-secondary);">
+                  /结尾忽略v1版本，#结尾强制使用输入地址
+                </div>
+                <div v-if="computedLlmEndpoint" style="font-size: 12px; color: var(--el-text-color-regular); word-break: break-all;">
+                  实际端点：{{ computedLlmEndpoint }}
+                </div>
+              </div>
+            </el-form-item>
+
+            <el-form-item label="默认模型 ID" prop="llmModel">
+              <el-select
+                v-model="formData.llmModel"
+                placeholder="选择或输入默认模型 ID"
+                filterable
+                allow-create
+                default-first-option
+                style="width: 100%"
+              >
+                <el-option
+                  v-for="model in availableModels"
+                  :key="model"
+                  :label="model"
+                  :value="model"
+                />
+              </el-select>
+            </el-form-item>
+          </el-form>
+        </el-tab-pane>
+
+        <el-tab-pane label="策略绑定" name="policy">
+          <div style="padding: 20px 0" v-loading="loading">
+            <div style="margin-bottom: 12px; font-size: 14px; color: var(--el-text-color-regular)">
+              选择要绑定的 Agent 级策略
+            </div>
+            <div style="margin-bottom: 12px; font-size: 12px; color: var(--el-text-color-secondary)">
+              全局策略自动对所有 Agent 生效，无需手动绑定
+            </div>
+
+            <!-- 策略卡片列表 -->
+            <div class="policy-list">
+              <div
+                v-for="policy in allPolicies"
+                :key="policy.id"
+                class="policy-card"
+                :class="{ 'policy-card-selected': selectedPolicyIds.includes(policy.id) }"
+                @click="togglePolicySelection(policy.id)"
+              >
+                <div class="policy-card-header">
+                  <el-checkbox
+                    :model-value="selectedPolicyIds.includes(policy.id)"
+                    @click.stop
+                    @change="togglePolicySelection(policy.id)"
+                  />
+                  <span class="policy-card-name">{{ policy.name }}</span>
+                  <el-tag :type="getPolicyTypeTagType(policy.type)" size="small">
+                    {{ getPolicyTypeLabel(policy.type) }}
+                  </el-tag>
+                </div>
+                <div v-if="policy.description" class="policy-card-description">
+                  {{ policy.description }}
+                </div>
+                <div v-else class="policy-card-description policy-card-description-empty">
+                  暂无描述
+                </div>
+                <div class="policy-card-footer">
+                  <el-tag :type="policy.enabled ? 'success' : 'info'" size="small" effect="plain">
+                    {{ policy.enabled ? '已启用' : '未启用' }}
+                  </el-tag>
+                </div>
+              </div>
+
+              <el-empty v-if="allPolicies.length === 0" description="暂无可用的 Agent 级策略" :image-size="80" />
+            </div>
+          </div>
+        </el-tab-pane>
+      </el-tabs>
+
+      <template #footer>
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <el-button
+            :loading="testingConnection"
+            @click="handleTestConnection"
+          >
+            {{ testingConnection ? '测试中...' : '测试连接' }}
+          </el-button>
+          <div>
+            <el-button @click="dialogVisible = false">取消</el-button>
+            <el-button type="primary" @click="handleSubmit">{{ isEditMode ? '保存' : '确定' }}</el-button>
+          </div>
+        </div>
+      </template>
+    </el-dialog>
+  </div>
+</template>
+
+<style scoped>
+:deep(.el-card) {
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+:deep(.el-card__header) {
+  border-radius: 12px 12px 0 0;
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.api-key-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 6px;
+  background-color: var(--el-fill-color-light);
+  border: 1px solid var(--el-border-color);
+  border-radius: 12px;
+}
+
+.api-key-text {
+  flex: 1;
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: nowrap;
+  color: var(--el-text-color-regular);
+  scrollbar-width: none;
+}
+
+.api-key-text::-webkit-scrollbar {
+  display: none;
+}
+
+.api-key-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.action-icon {
+  cursor: pointer;
+  color: var(--el-text-color-secondary);
+  font-size: 16px;
+  transition: color 0.3s;
+}
+
+.action-icon:hover {
+  color: var(--el-color-primary);
+}
+
+.policy-popover {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.policy-popover-title {
+  font-weight: 600;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--el-border-color-lighter);
+}
+
+.policy-popover-item {
+  padding: 6px 0;
+  color: var(--el-text-color-regular);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.policy-popover-item:not(:last-child) {
+  border-bottom: 1px solid var(--el-border-color-lighter);
+}
+
+.policy-disabled {
+  color: var(--el-text-color-secondary);
+  text-decoration: line-through;
+}
+
+/* 策略卡片列表样式 */
+.policy-list {
+  max-height: 400px;
+  overflow-y: auto;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 8px;
+  padding: 12px;
+  background-color: var(--el-fill-color-blank);
+}
+
+.policy-card {
+  padding: 10px;
+  margin-bottom: 6px;
+  border: 1px solid var(--el-border-color-light);
+  border-radius: 6px;
+  background-color: var(--el-bg-color);
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.policy-card:last-child {
+  margin-bottom: 0;
+}
+
+.policy-card:hover {
+  border-color: var(--el-color-primary);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.policy-card-selected {
+  border-color: var(--el-color-primary);
+  background-color: var(--el-color-primary-light-9);
+}
+
+.policy-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.policy-card-name {
+  flex: 1;
+  font-weight: 500;
+  font-size: 14px;
+  color: var(--el-text-color-primary);
+}
+
+.policy-card-description {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  margin-bottom: 6px;
+  line-height: 1.4;
+}
+
+.policy-card-description-empty {
+  font-style: italic;
+  opacity: 0.6;
+}
+
+.policy-card-footer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+</style>

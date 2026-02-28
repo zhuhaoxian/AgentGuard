@@ -1,0 +1,162 @@
+// backend/prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+// 用户表
+model User {
+  id        String   @id @default(uuid())
+  username  String   @unique
+  password  String
+  email     String?
+  role      String   @default("USER") // ADMIN/USER
+  status    Int      @default(1) // 0-禁用 1-启用
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  deleted   Int      @default(0)
+
+  @@unique([username, deleted], name: "uk_username")
+  @@map("user")
+}
+
+// Agent 表
+model Agent {
+  id           String    @id @default(uuid())
+  name         String
+  apiKey       String    @unique @map("api_key")
+  description  String?  @db.Text
+  llmProvider  String?   @map("llm_provider")
+  llmApiKey    String?   @map("llm_api_key")
+  llmBaseUrl   String?   @map("llm_base_url")
+  llmModel     String?   @map("llm_model")
+  status       Int       @default(1)
+  lastActiveAt DateTime? @map("last_active_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  deleted      Int       @default(0)
+
+  logs              AgentLog[]
+  policyBindings    AgentPolicyBinding[]
+  approvalRequests  ApprovalRequest[]
+
+  @@map("agent")
+}
+
+// 策略表
+model Policy {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  type        String   // ACCESS_CONTROL/RATE_LIMIT/APPROVAL
+  conditions  Json?
+  action      String   // ALLOW/DENY/APPROVAL/RATE_LIMIT
+  priority    Int      @default(0)
+  scope       String   @default("GLOBAL") // GLOBAL/AGENT
+  agentId     String?  @map("agent_id")
+  requestType String   @default("ALL") @map("request_type")
+  tags        String?
+  enabled     Int      @default(1)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  deleted     Int      @default(0)
+
+  agentBindings     AgentPolicyBinding[]
+  approvalRequests  ApprovalRequest[]
+
+  @@unique([name, deleted], name: "uk_name")
+  @@index([scope])
+  @@index([agentId])
+  @@map("policy")
+}
+
+// Agent-Policy 绑定表
+model AgentPolicyBinding {
+  id        String   @id @default(uuid())
+  agentId   String   @map("agent_id")
+  policyId  String   @map("policy_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  agent  Agent  @relation(fields: [agentId], references: [id])
+  policy Policy @relation(fields: [policyId], references: [id])
+
+  @@unique([agentId, policyId])
+  @@map("agent_policy_binding")
+}
+
+// Agent 日志表
+model AgentLog {
+  id               String   @id @default(uuid())
+  agentId          String   @map("agent_id")
+  requestType      String   @map("request_type")
+  endpoint         String?
+  method           String?
+  requestSummary   Json?    @map("request_summary")
+  requestHeaders   Json?    @map("request_headers")
+  requestBody      Json?    @map("request_body")
+  responseBody     Json?    @map("response_body")
+  responseStatus   String   @map("response_status")
+  responseTimeMs   Int?     @map("response_time_ms")
+  finishReason     String?  @map("finish_reason")
+  toolCalls        String?  @db.Text @map("tool_calls")
+  firstTokenTimeMs Int?     @map("first_token_time_ms")
+  tokenInput       Int?     @map("token_input")
+  tokenOutput      Int?     @map("token_output")
+  model            String?
+  policySnapshot   Json?    @map("policy_snapshot")
+  approvalRequestId String? @map("approval_request_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  agent Agent @relation(fields: [agentId], references: [id])
+
+  @@index([agentId])
+  @@index([createdAt])
+  @@index([finishReason])
+  @@map("agent_log")
+}
+
+// 审批请求表
+model ApprovalRequest {
+  id                String    @id @default(uuid())
+  policyId          String    @map("policy_id")
+  agentId           String    @map("agent_id")
+  requestData       Json      @map("request_data")
+  applicationReason String?  @db.Text  @map("application_reason")
+  status            String    @default("PENDING") // PENDING/APPROVED/REJECTED/EXPIRED
+  approverId        String?   @map("approver_id")
+  approvedAt        DateTime? @map("approved_at")
+  remark            String?  @db.Text
+  executionStatus   String?   @map("execution_status")
+  executionResult   String?  @db.Text  @map("execution_result")
+  executedAt        DateTime? @map("executed_at")
+  expiresAt         DateTime  @map("expires_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+
+  policy Policy @relation(fields: [policyId], references: [id])
+  agent  Agent  @relation(fields: [agentId], references: [id])
+
+  @@index([status])
+  @@index([agentId])
+  @@map("approval_request")
+}
+
+// 成本记录表
+model CostRecord {
+  id          String   @id @default(uuid())
+  agentId     String   @map("agent_id")
+  model       String
+  tokenInput  Int      @map("token_input")
+  tokenOutput Int      @map("token_output")
+  cost        Decimal  @db.Decimal(10, 6)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([agentId])
+  @@index([createdAt])
+  @@map("cost_record")
+}
+
+
