@@ -3,6 +3,7 @@ import cors from '@fastify/cors';
 import jwt from '@fastify/jwt';
 import { proxyRoutes } from './modules/proxy';
 import { apiProxyRoutes } from './modules/api-proxy';
+import { policyRoutes } from './modules/policy';
 
 export async function buildApp() {
   const app = Fastify({
@@ -27,6 +28,9 @@ export async function buildApp() {
 
   // 注册 API Proxy 路由
   await app.register(apiProxyRoutes);
+
+  // 注册 Policy 路由
+  await app.register(policyRoutes, { prefix: '/api/v1' });
 
   return app;
 }
