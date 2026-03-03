@@ -1,162 +1,221 @@
-// backend/prisma/schema.prisma
-
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
   provider = "mysql"
+  url      = env("DATABASE_URL")
 }
 
-// 用户表
 model User {
-  id        String   @id @default(uuid())
-  username  String   @unique
-  password  String
-  email     String?
-  role      String   @default("USER") // ADMIN/USER
-  status    Int      @default(1) // 0-禁用 1-启用
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-  deleted   Int      @default(0)
+  id        String   @id @default(uuid()) @db.VarChar(36)
+  username  String   @db.VarChar(50)
+  password  String   @db.VarChar(255)
+  email     String?  @db.VarChar(100)
+  role      String   @default("USER") @db.VarChar(20)
+  status    Int      @default(1) @db.TinyInt
+  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(0)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.DateTime(0)
+  deleted   Int      @default(0) @db.TinyInt
 
-  @@unique([username, deleted], name: "uk_username")
+  @@unique([username, deleted], name: "uk_username", map: "uk_username")
   @@map("user")
 }
 
-// Agent 表
 model Agent {
-  id           String    @id @default(uuid())
-  name         String
-  apiKey       String    @unique @map("api_key")
-  description  String?  @db.Text
-  llmProvider  String?   @map("llm_provider")
-  llmApiKey    String?   @map("llm_api_key")
-  llmBaseUrl   String?   @map("llm_base_url")
-  llmModel     String?   @map("llm_model")
-  status       Int       @default(1)
-  lastActiveAt DateTime? @map("last_active_at")
-  createdAt    DateTime  @default(now()) @map("created_at")
-  updatedAt    DateTime  @updatedAt @map("updated_at")
-  deleted      Int       @default(0)
+  id           String    @id @default(uuid()) @db.VarChar(36)
+  name         String    @db.VarChar(100)
+  apiKey       String    @unique(map: "uk_api_key") @map("api_key") @db.VarChar(64)
+  description  String?   @db.Text
+  lastActiveAt DateTime? @map("last_active_at") @db.DateTime(0)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  updatedAt    DateTime  @default(now()) @updatedAt @map("updated_at") @db.DateTime(0)
+  deleted      Int       @default(0) @db.TinyInt
+  llmProvider  String?   @map("llm_provider") @db.VarChar(50)
+  llmApiKey    String?   @map("llm_api_key") @db.VarChar(256)
+  llmBaseUrl   String?   @map("llm_base_url") @db.VarChar(500)
+  llmModel     String?   @map("llm_model") @db.VarChar(100)
+  status       Int       @default(1) @db.TinyInt
 
-  logs              AgentLog[]
-  policyBindings    AgentPolicyBinding[]
-  approvalRequests  ApprovalRequest[]
+  logs             AgentLog[]
+  policyBindings   AgentPolicyBinding[]
+  approvalRequests ApprovalRequest[]
 
   @@map("agent")
 }
 
-// 策略表
 model Policy {
-  id          String   @id @default(uuid())
-  name        String
-  description String?
-  type        String   // ACCESS_CONTROL/RATE_LIMIT/APPROVAL
+  id          String   @id @default(uuid()) @db.VarChar(36)
+  name        String   @db.VarChar(100)
+  description String?  @db.Text
+  type        String   @db.VarChar(30)
   conditions  Json?
-  action      String   // ALLOW/DENY/APPROVAL/RATE_LIMIT
+  action      String   @db.VarChar(20)
   priority    Int      @default(0)
-  scope       String   @default("GLOBAL") // GLOBAL/AGENT
-  agentId     String?  @map("agent_id")
-  requestType String   @default("ALL") @map("request_type")
-  tags        String?
-  enabled     Int      @default(1)
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
-  deleted     Int      @default(0)
+  scope       String   @default("GLOBAL") @db.VarChar(20)
+  agentId     String?  @map("agent_id") @db.VarChar(36)
+  requestType String   @default("ALL") @map("request_type") @db.VarChar(20)
+  enabled     Int      @default(1) @db.TinyInt
+  createdAt   DateTime @default(now()) @map("created_at") @db.DateTime(0)
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.DateTime(0)
+  deleted     Int      @default(0) @db.TinyInt
+  tags        String?  @db.VarChar(500)
 
-  agentBindings     AgentPolicyBinding[]
-  approvalRequests  ApprovalRequest[]
+  agentBindings    AgentPolicyBinding[]
+  approvalRequests ApprovalRequest[]
 
-  @@unique([name, deleted], name: "uk_name")
-  @@index([scope])
-  @@index([agentId])
+  @@unique([name, deleted], name: "uk_name", map: "uk_name")
+  @@index([agentId], map: "idx_agent_id")
+  @@index([requestType], map: "idx_request_type")
+  @@index([scope], map: "idx_scope")
   @@map("policy")
 }
 
-// Agent-Policy 绑定表
 model AgentPolicyBinding {
-  id        String   @id @default(uuid())
-  agentId   String   @map("agent_id")
-  policyId  String   @map("policy_id")
-  createdAt DateTime @default(now()) @map("created_at")
+  id        String   @id @default(uuid()) @db.VarChar(36)
+  agentId   String   @map("agent_id") @db.VarChar(36)
+  policyId  String   @map("policy_id") @db.VarChar(36)
+  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(0)
+  agent     Agent    @relation(fields: [agentId], references: [id])
+  policy    Policy   @relation(fields: [policyId], references: [id])
 
-  agent  Agent  @relation(fields: [agentId], references: [id])
-  policy Policy @relation(fields: [policyId], references: [id])
-
-  @@unique([agentId, policyId])
+  @@unique([agentId, policyId], map: "uk_agent_policy")
+  @@index([agentId], map: "idx_agent_id")
+  @@index([policyId], map: "idx_policy_id")
   @@map("agent_policy_binding")
 }
 
-// Agent 日志表
 model AgentLog {
-  id               String   @id @default(uuid())
-  agentId          String   @map("agent_id")
-  requestType      String   @map("request_type")
-  endpoint         String?
-  method           String?
-  requestSummary   Json?    @map("request_summary")
-  requestHeaders   Json?    @map("request_headers")
-  requestBody      Json?    @map("request_body")
-  responseBody     Json?    @map("response_body")
-  responseStatus   String   @map("response_status")
-  responseTimeMs   Int?     @map("response_time_ms")
-  finishReason     String?  @map("finish_reason")
-  toolCalls        String?  @db.Text @map("tool_calls")
-  firstTokenTimeMs Int?     @map("first_token_time_ms")
-  tokenInput       Int?     @map("token_input")
-  tokenOutput      Int?     @map("token_output")
-  model            String?
-  policySnapshot   Json?    @map("policy_snapshot")
-  approvalRequestId String? @map("approval_request_id")
-  createdAt        DateTime @default(now()) @map("created_at")
+  id                String   @id @default(uuid()) @db.VarChar(36)
+  agentId           String   @map("agent_id") @db.VarChar(36)
+  requestType       String   @map("request_type") @db.VarChar(20)
+  endpoint          String?  @db.VarChar(500)
+  method            String?  @db.VarChar(10)
+  requestSummary    Json?    @map("request_summary")
+  requestHeaders    Json?    @map("request_headers")
+  requestBody       Json?    @map("request_body")
+  responseBody      Json?    @map("response_body")
+  responseStatus    String   @map("response_status") @db.VarChar(20)
+  responseTimeMs    Int?     @map("response_time_ms")
+  finishReason      String?  @map("finish_reason") @db.VarChar(50)
+  toolCalls         String?  @map("tool_calls") @db.VarChar(500)
+  firstTokenTimeMs  Int?     @map("first_token_time_ms")
+  tokenInput        Int?     @map("token_input")
+  tokenOutput       Int?     @map("token_output")
+  model             String?  @db.VarChar(50)
+  policySnapshot    Json?    @map("policy_snapshot")
+  createdAt         DateTime @default(now()) @map("created_at") @db.DateTime(0)
+  approvalRequestId String?  @map("approval_request_id") @db.VarChar(32)
+  agent             Agent    @relation(fields: [agentId], references: [id])
 
-  agent Agent @relation(fields: [agentId], references: [id])
-
-  @@index([agentId])
-  @@index([createdAt])
-  @@index([finishReason])
+  @@index([agentId], map: "idx_agent_id")
+  @@index([approvalRequestId], map: "idx_approval_request_id")
+  @@index([createdAt], map: "idx_created_at")
+  @@index([finishReason], map: "idx_finish_reason")
+  @@index([toolCalls], map: "idx_tool_calls")
   @@map("agent_log")
 }
 
-// 审批请求表
 model ApprovalRequest {
-  id                String    @id @default(uuid())
-  policyId          String    @map("policy_id")
-  agentId           String    @map("agent_id")
+  id                String    @id @default(uuid()) @db.VarChar(36)
+  policyId          String    @map("policy_id") @db.VarChar(36)
+  agentId           String    @map("agent_id") @db.VarChar(36)
   requestData       Json      @map("request_data")
-  applicationReason String?  @db.Text  @map("application_reason")
-  status            String    @default("PENDING") // PENDING/APPROVED/REJECTED/EXPIRED
-  approverId        String?   @map("approver_id")
-  approvedAt        DateTime? @map("approved_at")
-  remark            String?  @db.Text
-  executionStatus   String?   @map("execution_status")
-  executionResult   String?  @db.Text  @map("execution_result")
-  executedAt        DateTime? @map("executed_at")
-  expiresAt         DateTime  @map("expires_at")
-  createdAt         DateTime  @default(now()) @map("created_at")
+  applicationReason String?   @map("application_reason") @db.Text
+  status            String    @default("PENDING") @db.VarChar(20)
+  approverId        String?   @map("approver_id") @db.VarChar(36)
+  approvedAt        DateTime? @map("approved_at") @db.DateTime(0)
+  remark            String?   @db.Text
+  executionStatus   String?   @map("execution_status") @db.VarChar(20)
+  executionResult   String?   @map("execution_result") @db.Text
+  executedAt        DateTime? @map("executed_at") @db.DateTime(0)
+  expiresAt         DateTime  @map("expires_at") @db.DateTime(0)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  agent             Agent     @relation(fields: [agentId], references: [id])
+  policy            Policy    @relation(fields: [policyId], references: [id])
 
-  policy Policy @relation(fields: [policyId], references: [id])
-  agent  Agent  @relation(fields: [agentId], references: [id])
-
-  @@index([status])
-  @@index([agentId])
+  @@index([agentId], map: "idx_agent_id")
+  @@index([executionStatus], map: "idx_execution_status")
+  @@index([status], map: "idx_status")
   @@map("approval_request")
 }
 
-// 成本记录表
-model CostRecord {
-  id          String   @id @default(uuid())
-  agentId     String   @map("agent_id")
-  model       String
-  tokenInput  Int      @map("token_input")
-  tokenOutput Int      @map("token_output")
-  cost        Decimal  @db.Decimal(10, 6)
-  createdAt   DateTime @default(now()) @map("created_at")
+model UsageRecord {
+  id          String   @id @default(uuid()) @db.VarChar(36)
+  agentId     String   @map("agent_id") @db.VarChar(36)
+  date        DateTime @db.Date
+  model       String?  @db.VarChar(50)
+  tokenInput  BigInt   @default(0) @map("token_input")
+  tokenOutput BigInt   @default(0) @map("token_output")
+  apiCalls    Int      @default(0) @map("api_calls")
+  createdAt   DateTime @default(now()) @map("created_at") @db.DateTime(0)
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.DateTime(0)
 
-  @@index([agentId])
-  @@index([createdAt])
-  @@map("cost_record")
+  @@unique([agentId, date, model], name: "uk_agent_date_model", map: "uk_agent_date_model")
+  @@index([date], map: "idx_date")
+  @@map("usage_record")
 }
 
+model Budget {
+  id             String   @id @default(uuid()) @db.VarChar(36)
+  month          String   @unique(map: "uk_month") @db.VarChar(7)
+  limitAmount    Decimal  @map("limit_amount") @db.Decimal(10, 2)
+  alertThreshold Decimal  @default(0.80) @map("alert_threshold") @db.Decimal(3, 2)
+  createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(0)
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.DateTime(0)
 
+  @@map("budget")
+}
+
+model RpmStats {
+  id           String   @id @default(uuid()) @db.VarChar(36)
+  agentId      String   @map("agent_id") @db.VarChar(36)
+  date         DateTime @db.Date
+  hour         Int      @db.TinyInt
+  minute       Int      @db.TinyInt
+  requestCount Int      @default(0) @map("request_count")
+  createdAt    DateTime @default(now()) @map("created_at") @db.DateTime(0)
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.DateTime(0)
+
+  @@unique([agentId, date, hour, minute], name: "uk_agent_date_hour_minute", map: "uk_agent_date_hour_minute")
+  @@index([agentId, date], map: "idx_agent_date")
+  @@index([date], map: "idx_date")
+  @@map("rpm_stats")
+}
+
+model AlertHistory {
+  id             String    @id @default(uuid()) @db.VarChar(36)
+  ruleId         String?   @map("rule_id") @db.VarChar(36)
+  type           String    @db.VarChar(30)
+  title          String    @db.VarChar(200)
+  content        String    @db.Text
+  channelType    String    @map("channel_type") @db.VarChar(100)
+  channelDetails String?   @map("channel_details") @db.Text
+  status         String    @db.VarChar(20)
+  errorMessage   String?   @map("error_message") @db.Text
+  sentAt         DateTime? @map("sent_at") @db.DateTime(0)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+
+  @@index([createdAt], map: "idx_created_at")
+  @@index([ruleId], map: "idx_rule_id")
+  @@index([status], map: "idx_status")
+  @@index([type], map: "idx_type")
+  @@map("alert_history")
+}
+
+model SystemSettings {
+  id           String    @id @default(uuid()) @db.VarChar(36)
+  settingKey   String    @map("setting_key") @db.VarChar(100)
+  settingValue String?   @map("setting_value") @db.Text
+  category     String    @db.VarChar(50)
+  description  String?   @db.VarChar(255)
+  encrypted    Boolean?  @default(false)
+  createdAt    DateTime? @default(now()) @map("created_at") @db.Timestamp(0)
+  updatedAt    DateTime? @default(now()) @updatedAt @map("updated_at") @db.Timestamp(0)
+  deleted      Boolean?  @default(false)
+
+  @@unique([category, settingKey, deleted], name: "uk_category_key", map: "uk_category_key")
+  @@index([settingKey], map: "idx_setting_key")
+  @@index([category], map: "idx_category")
+  @@map("system_settings")
+}

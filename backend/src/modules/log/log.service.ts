@@ -1,7 +1,5 @@
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../../common/utils/prisma.util';
 import type { ChatCompletionRequest, ChatCompletionResponse } from '../proxy/proxy.types';
-
-const prisma = new PrismaClient();
 
 export interface LogData {
   agentId: string;

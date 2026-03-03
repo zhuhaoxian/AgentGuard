@@ -1,9 +1,7 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../utils/prisma.util';
 
-const prisma = new PrismaClient();
-
-// 扩展 FastifyRequest 类型，添加 agent 属性
+// 扩展 FastifyRequest 类型,添加 agent 属性
 declare module 'fastify' {
   interface FastifyRequest {
     agent?: {
