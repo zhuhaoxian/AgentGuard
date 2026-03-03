@@ -54,8 +54,8 @@ export interface AgentLog {
 
 /** 日志列表查询参数 */
 export interface AgentLogListParams {
-  current: number
-  size: number
+  page: number
+  pageSize: number
   agentId?: string
   responseStatus?: ResponseStatus
   requestType?: RequestType

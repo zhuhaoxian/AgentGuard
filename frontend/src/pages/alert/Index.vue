@@ -13,8 +13,8 @@ import { marked } from 'marked'
 
 /** 查询表单 */
 const queryForm = ref<AlertHistoryQuery>({
-  current: 1,
-  size: 20,
+  page: 1,
+  pageSize: 20,
   type: undefined,
   status: undefined,
   startTime: undefined,
@@ -140,7 +140,7 @@ async function fetchAlertHistory() {
   loading.value = true
   try {
     const res = await getAlertHistoryList(queryForm.value)
-    alertList.value = res.records || []
+    alertList.value = res.items || []
     total.value = res.total || 0
   } catch (error) {
     console.error('查询告警历史失败:', error)
@@ -163,8 +163,8 @@ function handleSearch() {
  */
 function handleReset() {
   queryForm.value = {
-    current: 1,
-    size: 20,
+    page: 1,
+    pageSize: 20,
     type: undefined,
     status: undefined,
     startTime: undefined,
@@ -184,7 +184,7 @@ function handlePageChange(page: number) {
 /**
  * 每页条数变化
  */
-function handleSizeChange(size: number) {
+function handleSizeChange(pageSize: number) {
   queryForm.value.size = size
   queryForm.value.current = 1
   fetchAlertHistory()
@@ -457,7 +457,7 @@ onMounted(() => {
 
 /* Markdown样式 */
 .markdown-body {
-  font-size: 14px;
+  font-pageSize: 14px;
   line-height: 1.6;
   color: #333;
 }
@@ -472,19 +472,19 @@ onMounted(() => {
 }
 
 .markdown-body h1 {
-  font-size: 24px;
+  font-pageSize: 24px;
 }
 
 .markdown-body h2 {
-  font-size: 20px;
+  font-pageSize: 20px;
 }
 
 .markdown-body h3 {
-  font-size: 18px;
+  font-pageSize: 18px;
 }
 
 .markdown-body h4 {
-  font-size: 16px;
+  font-pageSize: 16px;
 }
 
 .markdown-body p {
@@ -573,7 +573,7 @@ onMounted(() => {
 .channel-item {
   display: flex;
   align-items: center;
-  font-size: 14px;
+  font-pageSize: 14px;
   line-height: 1.5;
   overflow-x: auto;
   overflow-y: hidden;

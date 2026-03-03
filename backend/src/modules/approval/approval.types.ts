@@ -7,25 +7,27 @@ export interface CreateApprovalDto {
 }
 
 export interface ApprovalActionDto {
-  approverId: string;
+  approverId?: string;
   remark?: string;
 }
 
 export interface ApprovalResponse {
   id: string;
   policyId: string;
+  policyName: string | null;
   agentId: string;
+  agentName: string | null;
   requestData: any;
   applicationReason: string | null;
   status: string;
   approverId: string | null;
-  approvedAt: Date | null;
+  approvedAt: string | null;
   remark: string | null;
   executionStatus: string | null;
   executionResult: string | null;
-  executedAt: Date | null;
-  expiresAt: Date;
-  createdAt: Date;
+  executedAt: string | null;
+  expiresAt: string;
+  createdAt: string;
 }
 
 export interface ApprovalListQuery {
@@ -33,6 +35,7 @@ export interface ApprovalListQuery {
   pageSize?: number;
   status?: string;
   agentId?: string;
+  approvalId?: string; // 支持模糊匹配
 }
 
 export interface ApprovalStatusResponse {

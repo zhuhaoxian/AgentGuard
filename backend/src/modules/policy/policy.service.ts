@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import { PolicyEngine } from './policy-engine';
 import { PageResult, createPageResult } from '../../common/types/pagination.types';
+import { formatDateTime } from '../../common/utils/date.util';
 
 /**
  * 策略服务
@@ -107,9 +108,20 @@ export class PolicyService {
    * 获取策略详情
    */
   async getPolicyById(id: string) {
-    return await this.prisma.policy.findUnique({
+    const policy = await this.prisma.policy.findUnique({
       where: { id, deleted: 0 }
     });
+
+    if (!policy) {
+      return null;
+    }
+
+    // 格式化日期
+    return {
+      ...policy,
+      createdAt: formatDateTime(policy.createdAt),
+      updatedAt: formatDateTime(policy.updatedAt)
+    };
   }
 
   /**
@@ -153,7 +165,14 @@ export class PolicyService {
       })
     ]);
 
-    return createPageResult(items, total, page, pageSize);
+    // 格式化日期
+    const formattedItems = items.map(item => ({
+      ...item,
+      createdAt: formatDateTime(item.createdAt),
+      updatedAt: formatDateTime(item.updatedAt)
+    }));
+
+    return createPageResult(formattedItems, total, page, pageSize);
   }
 
   /**

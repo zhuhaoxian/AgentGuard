@@ -45,13 +45,13 @@ export function deletePolicy(id: string): Promise<void> {
 /**
  * 启用策略
  */
-export function enablePolicy(id: string): Promise<void> {
-  return request.post(`/policies/${id}/enable`)
+export function enablePolicy(id: string): Promise<Policy> {
+  return request.patch(`/policies/${id}/toggle`, { enabled: true })
 }
 
 /**
  * 停用策略
  */
-export function disablePolicy(id: string): Promise<void> {
-  return request.post(`/policies/${id}/disable`)
+export function disablePolicy(id: string): Promise<Policy> {
+  return request.patch(`/policies/${id}/toggle`, { enabled: false })
 }

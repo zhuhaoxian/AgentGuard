@@ -3,6 +3,15 @@ export interface AlertHistoryQuery {
   pageSize?: number;
   type?: string;
   status?: string;
+  startTime?: string;
+  endTime?: string;
+}
+
+export interface ChannelRecipient {
+  channel: string;
+  recipient: string;
+  status: string;
+  errorMessage?: string;
 }
 
 export interface AlertHistoryResponse {
@@ -12,11 +21,11 @@ export interface AlertHistoryResponse {
   title: string;
   content: string;
   channelType: string;
-  channelDetails: string | null;
+  channelRecipients: ChannelRecipient[] | null;
   status: string;
   errorMessage: string | null;
-  sentAt: Date | null;
-  createdAt: Date;
+  sentAt: string | null;
+  createdAt: string;
 }
 
 export interface SendAlertDto {

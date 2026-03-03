@@ -88,4 +88,69 @@ export async function agentRoutes(app: FastifyInstance) {
       return ResponseUtil.success(agent);
     }
   );
+
+  // 启用 Agent
+  app.put<{ Params: { id: string } }>(
+    '/agents/:id/enable',
+    async (request, reply) => {
+      const agent = await agentService.enableAgent(request.params.id);
+      return ResponseUtil.success(agent, 'Agent enabled successfully');
+    }
+  );
+
+  // 禁用 Agent
+  app.put<{ Params: { id: string } }>(
+    '/agents/:id/disable',
+    async (request, reply) => {
+      const agent = await agentService.disableAgent(request.params.id);
+      return ResponseUtil.success(agent, 'Agent disabled successfully');
+    }
+  );
+
+  // 绑定策略到 Agent
+  app.post<{ Params: { agentId: string; policyId: string } }>(
+    '/agents/:agentId/policies/:policyId',
+    async (request, reply) => {
+      const binding = await agentService.bindPolicy(
+        request.params.agentId,
+        request.params.policyId
+      );
+      return ResponseUtil.success(binding, 'Policy bound successfully');
+    }
+  );
+
+  // 解绑 Agent 的策略
+  app.delete<{ Params: { agentId: string; policyId: string } }>(
+    '/agents/:agentId/policies/:policyId',
+    async (request, reply) => {
+      await agentService.unbindPolicy(
+        request.params.agentId,
+        request.params.policyId
+      );
+      return ResponseUtil.success(null, 'Policy unbound successfully');
+    }
+  );
+
+  // 获取 Agent 绑定的策略列表
+  app.get<{ Params: { agentId: string } }>(
+    '/agents/:agentId/policies',
+    async (request, reply) => {
+      const policies = await agentService.getAgentPolicies(request.params.agentId);
+      return ResponseUtil.success(policies);
+    }
+  );
+
+  // 测试 LLM 连接
+  app.post<{
+    Body: {
+      agentId?: string;
+      llmProvider?: string;
+      llmApiKey?: string;
+      llmBaseUrl?: string;
+      llmModel?: string;
+    };
+  }>('/agents/test-connection', async (request, reply) => {
+    const result = await agentService.testLlmConnection(request.body);
+    return ResponseUtil.success(result);
+  });
 }

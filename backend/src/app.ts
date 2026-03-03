@@ -10,6 +10,7 @@ import { settingsRoutes } from './modules/settings';
 import { approvalRoutes } from './modules/approval';
 import { statsRoutes } from './modules/stats';
 import { alertRoutes } from './modules/alert';
+import { logRoutes } from './modules/log';
 import { errorMiddleware } from './common/middleware/error.middleware';
 import { jwtAuthMiddleware } from './common/middleware/jwt-auth.middleware';
 import { createLoggerConfig } from './common/utils/logger.util';
@@ -21,7 +22,7 @@ export async function buildApp() {
 
   await app.register(cors, { origin: true });
   await app.register(jwt, {
-    secret: process.env.JWT_SECRET || 'your-secret-key'
+    secret: process.env.JWT_SECRET || 'agentguard-secret-key-change-in-production'
   });
 
   // 注册全局错误处理中间件
@@ -59,6 +60,9 @@ export async function buildApp() {
 
   // 注册 Alert 路由
   await app.register(alertRoutes, { prefix: '/api/v1' });
+  
+  // 注册 Log 路由
+  await app.register(logRoutes, { prefix: '/api/v1' });
 
   return app;
 }

@@ -31,6 +31,7 @@ export async function approvalRoutes(app: FastifyInstance) {
           : 20,
         status: request.query.status as string,
         agentId: request.query.agentId as string,
+        approvalId: request.query.approvalId as string,
       };
 
       const { approvals, total } = await approvalService.getApprovals(query);
@@ -49,7 +50,7 @@ export async function approvalRoutes(app: FastifyInstance) {
   );
 
   // 批准审批请求
-  app.post<{ Params: { id: string }; Body: ApprovalActionDto }>(
+  app.post<{ Params: { id: string }; Body?: ApprovalActionDto }>(
     '/approvals/:id/approve',
     async (request, reply) => {
       const approval = await approvalService.approveApproval(
@@ -61,7 +62,7 @@ export async function approvalRoutes(app: FastifyInstance) {
   );
 
   // 拒绝审批请求
-  app.post<{ Params: { id: string }; Body: ApprovalActionDto }>(
+  app.post<{ Params: { id: string }; Body?: ApprovalActionDto }>(
     '/approvals/:id/reject',
     async (request, reply) => {
       const approval = await approvalService.rejectApproval(
@@ -94,7 +95,7 @@ export async function approvalRoutes(app: FastifyInstance) {
   );
 
   // 获取待审批数量
-  app.get('/approvals/stats/pending-count', async (request, reply) => {
+  app.get('/approvals/pending/count', async (request, reply) => {
     const count = await approvalService.getPendingCount();
     return ResponseUtil.success({ count });
   });

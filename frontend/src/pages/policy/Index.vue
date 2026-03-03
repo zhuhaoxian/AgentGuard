@@ -15,8 +15,8 @@ const loading = ref(false)
 const policies = ref<Policy[]>([])
 const total = ref(0)
 const queryParams = ref({
-  current: 1,
-  size: 10,
+  page: 1,
+  pageSize: 10,
   keyword: '',
   type: undefined as PolicyType | undefined,
   scope: undefined as PolicyScope | undefined,
@@ -272,11 +272,14 @@ function buildConditionsJson(): string {
 /**
  * 从条件 JSON 解析到表单
  */
-function parseConditionsJson(type: PolicyType, conditionsStr: string) {
+function parseConditionsJson(type: PolicyType, conditionsStr: string | any) {
   if (!conditionsStr) return
 
   try {
-    const conditions = JSON.parse(conditionsStr)
+    // 如果已经是对象，直接使用；如果是字符串，则解析
+    const conditions = typeof conditionsStr === 'string'
+      ? JSON.parse(conditionsStr)
+      : conditionsStr
     
     switch (type) {
       case 'ACCESS_CONTROL':
@@ -361,39 +364,42 @@ function formatOperator(op: string): string {
 /**
  * 格式化条件显示
  */
-function formatConditions(type: PolicyType, conditionsStr: string): string {
+function formatConditions(type: PolicyType, conditionsStr: string | any): string {
   if (!conditionsStr) return '-'
-  
+
   try {
-    const conditions = JSON.parse(conditionsStr)
+    // 如果已经是对象，直接使用；如果是字符串，则解析
+    const conditions = typeof conditionsStr === 'string'
+      ? JSON.parse(conditionsStr)
+      : conditionsStr
     const parts: string[] = []
-    
+
     switch (type) {
       case 'ACCESS_CONTROL': {
         // 基础：方法 + URL
         const method = conditions.method || 'ALL'
         const url = conditions.urlPattern || '*'
         parts.push(`${method} ${url}`)
-        
+
         // Header 条件
         if (conditions.headerConditions?.length) {
-          const headerParts = conditions.headerConditions.map((h: any) => 
+          const headerParts = conditions.headerConditions.map((h: any) =>
             `${h.field} ${formatOperator(h.operator)} ${h.value}`
           )
           parts.push(`Header: ${headerParts.join(', ')}`)
         }
-        
+
         // Body 条件
         if (conditions.bodyConditions?.length) {
-          const bodyParts = conditions.bodyConditions.map((b: any) => 
+          const bodyParts = conditions.bodyConditions.map((b: any) =>
             `${b.field} ${formatOperator(b.operator)} ${b.value}`
           )
           parts.push(`Body: ${bodyParts.join(', ')}`)
         }
-        
+
         return parts.join(' | ')
       }
-      
+
       case 'APPROVAL': {
         // URL 模式
         if (conditions.urlPattern) {
@@ -416,7 +422,7 @@ function formatConditions(type: PolicyType, conditionsStr: string): string {
         }
         return parts.length ? parts.join(' | ') : '自定义条件'
       }
-      
+
       case 'RATE_LIMIT': {
         // URL 和方法
         const method = conditions.method || 'ALL'
@@ -462,7 +468,7 @@ async function fetchData() {
   loading.value = true
   try {
     const res = await policyApi.getPolicyList(queryParams.value)
-    policies.value = res.records
+    policies.value = res.items
     total.value = res.total
   } finally {
     loading.value = false
@@ -694,7 +700,7 @@ async function handleToggleEnabled(policy: Policy) {
  * 搜索
  */
 function handleSearch() {
-  queryParams.value.current = 1
+  queryParams.value.page = 1
   fetchData()
 }
 
@@ -706,7 +712,7 @@ function handleReset() {
   queryParams.value.type = undefined
   queryParams.value.scope = undefined
   queryParams.value.sortBy = 'priority_desc'
-  queryParams.value.current = 1
+  queryParams.value.page = 1
   fetchData()
 }
 
@@ -714,7 +720,7 @@ function handleReset() {
  * 分页变化
  */
 function handlePageChange(page: number) {
-  queryParams.value.current = page
+  queryParams.value.page = page
   fetchData()
 }
 
@@ -722,8 +728,8 @@ function handlePageChange(page: number) {
  * 每页条数变化
  */
 function handleSizeChange(size: number) {
-  queryParams.value.size = size
-  queryParams.value.current = 1
+  queryParams.value.pageSize = size
+  queryParams.value.page = 1
   fetchData()
 }
 
@@ -866,6 +872,8 @@ onMounted(() => {
           <template #default="{ row }">
             <el-switch
               v-model="row.enabled"
+              :active-value="1"
+              :inactive-value="0"
               @change="handleToggleEnabled(row)"
             />
           </template>
@@ -880,8 +888,8 @@ onMounted(() => {
 
       <!-- 分页 -->
       <el-pagination
-        v-model:current-page="queryParams.current"
-        v-model:page-size="queryParams.size"
+        v-model:current-page="queryParams.page"
+        v-model:page-size="queryParams.pageSize"
         :total="total"
         :page-sizes="[10, 20, 50, 100]"
         layout="total, sizes, prev, pager, next, jumper"

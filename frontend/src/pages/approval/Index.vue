@@ -14,8 +14,8 @@ const loading = ref(false)
 const approvals = ref<Approval[]>([])
 const total = ref(0)
 const queryParams = ref({
-  current: 1,
-  size: 10,
+  page: 1,
+  pageSize: 10,
   status: undefined as ApprovalStatus | undefined,
   approvalId: undefined as string | undefined
 })
@@ -60,7 +60,7 @@ async function fetchData() {
   loading.value = true
   try {
     const res = await approvalApi.getApprovalList(queryParams.value)
-    approvals.value = res.records
+    approvals.value = res.items
     total.value = res.total
   } finally {
     loading.value = false
@@ -83,13 +83,18 @@ async function handleViewDetail(approval: Approval) {
 /**
  * 格式化请求数据用于显示
  */
-function formatRequestData(data: string): string {
+function formatRequestData(data: any): string {
   if (!data) return '-'
   try {
+    // 如果已经是对象，直接格式化
+    if (typeof data === 'object') {
+      return JSON.stringify(data, null, 2)
+    }
+    // 如果是字符串，尝试解析后格式化
     const parsed = JSON.parse(data)
     return JSON.stringify(parsed, null, 2)
   } catch {
-    return data
+    return String(data)
   }
 }
 
@@ -150,7 +155,7 @@ async function handleReject(approval: Approval) {
  * 查询
  */
 function handleSearch() {
-  queryParams.value.current = 1
+  queryParams.value.page = 1
   fetchData()
 }
 
@@ -160,7 +165,7 @@ function handleSearch() {
 function handleReset() {
   queryParams.value.status = undefined
   queryParams.value.approvalId = undefined
-  queryParams.value.current = 1
+  queryParams.value.page = 1
   fetchData()
 }
 
@@ -168,16 +173,16 @@ function handleReset() {
  * 分页变化
  */
 function handlePageChange(page: number) {
-  queryParams.value.current = page
+  queryParams.value.page = page
   fetchData()
 }
 
 /**
  * 每页条数变化
  */
-function handleSizeChange(size: number) {
-  queryParams.value.size = size
-  queryParams.value.current = 1
+function handleSizeChange(pageSize: number) {
+  queryParams.value.pageSize = size
+  queryParams.value.page = 1
   fetchData()
 }
 
@@ -277,8 +282,8 @@ onMounted(() => {
 
       <!-- 分页 -->
       <el-pagination
-        v-model:current-page="queryParams.current"
-        v-model:page-size="queryParams.size"
+        v-model:current-page="queryParams.page"
+        v-model:page-size="queryParams.pageSize"
         :total="total"
         :page-sizes="[10, 20, 50, 100]"
         layout="total, sizes, prev, pager, next, jumper"
@@ -399,7 +404,7 @@ onMounted(() => {
   margin-bottom: 10px;
   color: #303133;
   font-weight: 500;
-  font-size: 14px;
+  font-pageSize: 14px;
 }
 
 .reason-content,

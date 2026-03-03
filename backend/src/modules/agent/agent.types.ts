@@ -23,6 +23,7 @@ export interface AgentResponse {
   apiKey: string;
   description: string | null;
   llmProvider: string | null;
+  llmApiKey: string | null;
   llmBaseUrl: string | null;
   llmModel: string | null;
   status: number;

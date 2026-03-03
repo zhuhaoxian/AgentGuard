@@ -19,8 +19,8 @@ const agents = ref<Agent[]>([])
 const activeTab = ref<RequestType>('LLM_CALL') // 默认显示LLM调用
 
 const queryParams = ref<AgentLogListParams>({
-  current: 1,
-  size: 20,
+  page: 1,
+  pageSize: 20,
   agentId: undefined,
   responseStatus: undefined
 })
@@ -56,7 +56,10 @@ const currentLog = ref<AgentLog | null>(null)
 const parsedRequestSummary = computed(() => {
   if (!currentLog.value?.requestSummary) return null
   try {
-    return JSON.parse(currentLog.value.requestSummary)
+    // 如果已经是对象，直接返回；如果是字符串，则解析
+    return typeof currentLog.value.requestSummary === 'string'
+      ? JSON.parse(currentLog.value.requestSummary)
+      : currentLog.value.requestSummary
   } catch {
     return null
   }
@@ -84,37 +87,55 @@ const tokensPerSecond = computed(() => {
 const formattedRequestHeaders = computed(() => {
   if (!currentLog.value?.requestHeaders) return ''
   try {
-    return JSON.stringify(JSON.parse(currentLog.value.requestHeaders), null, 2)
+    const headers = typeof currentLog.value.requestHeaders === 'string'
+      ? JSON.parse(currentLog.value.requestHeaders)
+      : currentLog.value.requestHeaders
+    return JSON.stringify(headers, null, 2)
   } catch {
-    return currentLog.value.requestHeaders
+    return typeof currentLog.value.requestHeaders === 'string'
+      ? currentLog.value.requestHeaders
+      : JSON.stringify(currentLog.value.requestHeaders, null, 2)
   }
 })
 
 const formattedRequestBody = computed(() => {
   if (!currentLog.value?.requestBody) return ''
   try {
-    return JSON.stringify(JSON.parse(currentLog.value.requestBody), null, 2)
+    const body = typeof currentLog.value.requestBody === 'string'
+      ? JSON.parse(currentLog.value.requestBody)
+      : currentLog.value.requestBody
+    return JSON.stringify(body, null, 2)
   } catch {
-    return currentLog.value.requestBody
+    return typeof currentLog.value.requestBody === 'string'
+      ? currentLog.value.requestBody
+      : JSON.stringify(currentLog.value.requestBody, null, 2)
   }
 })
 
 const formattedResponseBody = computed(() => {
   if (!currentLog.value?.responseBody) return ''
   try {
-    return JSON.stringify(JSON.parse(currentLog.value.responseBody), null, 2)
+    const body = typeof currentLog.value.responseBody === 'string'
+      ? JSON.parse(currentLog.value.responseBody)
+      : currentLog.value.responseBody
+    return JSON.stringify(body, null, 2)
   } catch {
-    return currentLog.value.responseBody
+    return typeof currentLog.value.responseBody === 'string'
+      ? currentLog.value.responseBody
+      : JSON.stringify(currentLog.value.responseBody, null, 2)
   }
 })
 
 /**
  * 格式化策略条件为易读字符串
  */
-function formatPolicyConditions(conditionsStr: string | undefined): string {
+function formatPolicyConditions(conditionsStr: string | any | undefined): string {
   if (!conditionsStr) return '-'
   try {
-    const conditions = JSON.parse(conditionsStr)
+    // 如果已经是对象，直接使用；如果是字符串，则解析
+    const conditions = typeof conditionsStr === 'string'
+      ? JSON.parse(conditionsStr)
+      : conditionsStr
     const parts: string[] = []
 
     // HTTP 方法
@@ -146,7 +167,7 @@ function formatPolicyConditions(conditionsStr: string | undefined): string {
 
     return parts.length > 0 ? parts.join(' | ') : JSON.stringify(conditions)
   } catch {
-    return conditionsStr
+    return typeof conditionsStr === 'string' ? conditionsStr : JSON.stringify(conditionsStr)
   }
 }
 
@@ -154,8 +175,8 @@ async function fetchData() {
   loading.value = true
   try {
     const params: AgentLogListParams = {
-      current: queryParams.value.current,
-      size: queryParams.value.size,
+      page: queryParams.value.page,
+      pageSize: queryParams.value.pageSize,
       requestType: activeTab.value
     }
     if (queryParams.value.agentId) {
@@ -165,7 +186,7 @@ async function fetchData() {
       params.responseStatus = queryParams.value.responseStatus
     }
     const res = await logApi.getLogList(params)
-    logs.value = res.records
+    logs.value = res.items
     total.value = res.total
   } finally {
     loading.value = false
@@ -174,15 +195,15 @@ async function fetchData() {
 
 async function fetchAgents() {
   try {
-    const res = await agentApi.getAgentList({ current: 1, size: 100 })
-    agents.value = res.records
+    const res = await agentApi.getAgentList({ page: 1, pageSize: 100 })
+    agents.value = res.items
   } catch (e) {
     // ignore
   }
 }
 
 function handleSearch() {
-  queryParams.value.current = 1
+  queryParams.value.page = 1
   fetchData()
 }
 
@@ -191,16 +212,16 @@ function handleRefresh() {
 }
 
 function handlePageChange(page: number) {
-  queryParams.value.current = page
+  queryParams.value.page = page
   fetchData()
 }
 
 /**
  * 每页条数变化
  */
-function handleSizeChange(size: number) {
-  queryParams.value.size = size
-  queryParams.value.current = 1
+function handleSizeChange(pageSize: number) {
+  queryParams.value.pageSize = size
+  queryParams.value.page = 1
   fetchData()
 }
 
@@ -348,7 +369,7 @@ onMounted(() => {
 
 // 监听Tab切换，重新获取数据
 watch(activeTab, () => {
-  queryParams.value.current = 1 // 切换Tab时重置到第一页
+  queryParams.value.page = 1 // 切换Tab时重置到第一页
   fetchData()
 })
 </script>
@@ -515,8 +536,8 @@ watch(activeTab, () => {
       </el-tabs>
 
       <el-pagination
-        v-model:current-page="queryParams.current"
-        v-model:page-size="queryParams.size"
+        v-model:current-page="queryParams.page"
+        v-model:page-size="queryParams.pageSize"
         :total="total"
         :page-sizes="[10, 20, 50, 100]"
         layout="total, sizes, prev, pager, next, jumper"
@@ -809,7 +830,7 @@ watch(activeTab, () => {
 
 .tool-count {
   margin-left: 4px;
-  font-size: 11px;
+  font-pageSize: 11px;
   opacity: 0.8;
   font-weight: 600;
 }
@@ -836,7 +857,7 @@ watch(activeTab, () => {
 
 .policy-conditions {
   margin-top: 4px;
-  font-size: 13px;
+  font-pageSize: 13px;
 }
 
 .conditions-label {
@@ -870,7 +891,7 @@ watch(activeTab, () => {
 
 .card-header-title {
   font-weight: 600;
-  font-size: 14px;
+  font-pageSize: 14px;
   color: var(--el-text-color-primary);
 }
 
@@ -887,12 +908,12 @@ watch(activeTab, () => {
 }
 
 .metric-label {
-  font-size: 12px;
+  font-pageSize: 12px;
   color: var(--el-text-color-secondary);
 }
 
 .metric-value {
-  font-size: 24px;
+  font-pageSize: 24px;
   font-weight: 600;
   color: var(--el-text-color-primary);
 }
@@ -914,7 +935,7 @@ watch(activeTab, () => {
 }
 
 .metric-value-text {
-  font-size: 14px;
+  font-pageSize: 14px;
   color: var(--el-text-color-regular);
   word-break: break-all;
 }

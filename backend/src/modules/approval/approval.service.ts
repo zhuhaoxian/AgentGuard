@@ -11,6 +11,7 @@ import {
   ApprovalListQuery,
   ApprovalStatusResponse,
 } from './approval.types';
+import { formatDateTime } from '../../common/utils/date.util';
 
 export class ApprovalService {
   private prisma: PrismaClient;
@@ -23,6 +24,16 @@ export class ApprovalService {
    * 创建审批请求
    */
   async createApproval(dto: CreateApprovalDto): Promise<ApprovalResponse> {
+    // 验证必填字段
+    if (!dto.policyId || !dto.agentId || !dto.requestData || !dto.expiresAt) {
+      throw new ValidationException('Missing required fields');
+    }
+
+    // 验证过期时间
+    if (new Date(dto.expiresAt) <= new Date()) {
+      throw new ValidationException('Expiration time must be in the future');
+    }
+
     const approval = await this.prisma.approvalRequest.create({
       data: {
         policyId: dto.policyId,
@@ -43,6 +54,10 @@ export class ApprovalService {
   async getApprovalById(id: string): Promise<ApprovalResponse> {
     const approval = await this.prisma.approvalRequest.findUnique({
       where: { id },
+      include: {
+        policy: true,
+        agent: true,
+      },
     });
 
     if (!approval) {
@@ -72,12 +87,22 @@ export class ApprovalService {
       where.agentId = query.agentId;
     }
 
+    if (query.approvalId) {
+      where.id = {
+        contains: query.approvalId,
+      };
+    }
+
     const [approvals, total] = await Promise.all([
       this.prisma.approvalRequest.findMany({
         where,
         skip,
         take: pageSize,
         orderBy: { createdAt: 'desc' },
+        include: {
+          policy: true,
+          agent: true,
+        },
       }),
       this.prisma.approvalRequest.count({ where }),
     ]);
@@ -93,7 +118,7 @@ export class ApprovalService {
    */
   async approveApproval(
     id: string,
-    dto: ApprovalActionDto
+    dto?: ApprovalActionDto
   ): Promise<ApprovalResponse> {
     const approval = await this.prisma.approvalRequest.findUnique({
       where: { id },
@@ -116,9 +141,13 @@ export class ApprovalService {
       where: { id },
       data: {
         status: 'APPROVED',
-        approverId: dto.approverId,
+        approverId: dto?.approverId,
         approvedAt: new Date(),
-        remark: dto.remark,
+        remark: dto?.remark,
+      },
+      include: {
+        policy: true,
+        agent: true,
       },
     });
 
@@ -130,7 +159,7 @@ export class ApprovalService {
    */
   async rejectApproval(
     id: string,
-    dto: ApprovalActionDto
+    dto?: ApprovalActionDto
   ): Promise<ApprovalResponse> {
     const approval = await this.prisma.approvalRequest.findUnique({
       where: { id },
@@ -148,9 +177,13 @@ export class ApprovalService {
       where: { id },
       data: {
         status: 'REJECTED',
-        approverId: dto.approverId,
+        approverId: dto?.approverId,
         approvedAt: new Date(),
-        remark: dto.remark,
+        remark: dto?.remark,
+      },
+      include: {
+        policy: true,
+        agent: true,
       },
     });
 
@@ -228,6 +261,11 @@ export class ApprovalService {
    * 提交审批申请理由
    */
   async submitReason(id: string, reason: string): Promise<ApprovalResponse> {
+    // 验证理由不能为空
+    if (!reason || reason.trim().length === 0) {
+      throw new ValidationException('Reason cannot be empty');
+    }
+
     const approval = await this.prisma.approvalRequest.findUnique({
       where: { id },
     });
@@ -239,6 +277,10 @@ export class ApprovalService {
     const updatedApproval = await this.prisma.approvalRequest.update({
       where: { id },
       data: { applicationReason: reason },
+      include: {
+        policy: true,
+        agent: true,
+      },
     });
 
     return this.toApprovalResponse(updatedApproval);
@@ -251,18 +293,20 @@ export class ApprovalService {
     return {
       id: approval.id,
       policyId: approval.policyId,
+      policyName: approval.policy?.name || null,
       agentId: approval.agentId,
+      agentName: approval.agent?.name || null,
       requestData: approval.requestData,
       applicationReason: approval.applicationReason,
       status: approval.status,
       approverId: approval.approverId,
-      approvedAt: approval.approvedAt,
+      approvedAt: formatDateTime(approval.approvedAt),
       remark: approval.remark,
       executionStatus: approval.executionStatus,
       executionResult: approval.executionResult,
-      executedAt: approval.executedAt,
-      expiresAt: approval.expiresAt,
-      createdAt: approval.createdAt,
+      executedAt: formatDateTime(approval.executedAt),
+      expiresAt: formatDateTime(approval.expiresAt),
+      createdAt: formatDateTime(approval.createdAt),
     };
   }
 }

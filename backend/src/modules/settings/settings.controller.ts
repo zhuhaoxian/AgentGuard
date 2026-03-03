@@ -6,6 +6,9 @@ import {
   SettingDto,
   UpdateSettingDto,
   BatchUpdateSettingsDto,
+  EmailSettingsDto,
+  WebhookSettingsDto,
+  AlertSettingsDto,
 } from './settings.types';
 
 const settingsService = new SettingsService(prisma);
@@ -76,6 +79,72 @@ export async function settingsRoutes(app: FastifyInstance) {
     async (request, reply) => {
       settingsService.clearCache(request.params.category);
       return ResponseUtil.success(null, 'Cache cleared successfully');
+    }
+  );
+
+  // ==================== 邮件通知配置 ====================
+
+  // 获取邮件通知配置
+  app.get('/settings/email', async (request, reply) => {
+    const settings = await settingsService.getEmailSettings();
+    return ResponseUtil.success(settings);
+  });
+
+  // 更新邮件通知配置
+  app.put<{ Body: EmailSettingsDto }>(
+    '/settings/email',
+    async (request, reply) => {
+      await settingsService.updateEmailSettings(request.body);
+      return ResponseUtil.success(null, 'Email settings updated successfully');
+    }
+  );
+
+  // 测试邮件配置
+  app.post<{ Body: EmailSettingsDto }>(
+    '/settings/email/test',
+    async (request, reply) => {
+      const success = await settingsService.testEmailSettings(request.body);
+      return ResponseUtil.success(
+        { success },
+        success ? 'Email test successful' : 'Email test failed'
+      );
+    }
+  );
+
+  // ==================== Webhook通知配置 ====================
+
+  // 获取Webhook通知配置
+  app.get('/settings/webhook', async (request, reply) => {
+    const settings = await settingsService.getWebhookSettings();
+    return ResponseUtil.success(settings);
+  });
+
+  // 更新Webhook通知配置
+  app.put<{ Body: WebhookSettingsDto }>(
+    '/settings/webhook',
+    async (request, reply) => {
+      await settingsService.updateWebhookSettings(request.body);
+      return ResponseUtil.success(
+        null,
+        'Webhook settings updated successfully'
+      );
+    }
+  );
+
+  // ==================== 告警配置 ====================
+
+  // 获取告警配置
+  app.get('/settings/alert', async (request, reply) => {
+    const settings = await settingsService.getAlertSettings();
+    return ResponseUtil.success(settings);
+  });
+
+  // 更新告警配置
+  app.put<{ Body: AlertSettingsDto }>(
+    '/settings/alert',
+    async (request, reply) => {
+      await settingsService.updateAlertSettings(request.body);
+      return ResponseUtil.success(null, 'Alert settings updated successfully');
     }
   );
 }

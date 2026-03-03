@@ -16,8 +16,8 @@ const loading = ref(false)
 const agents = ref<Agent[]>([])
 const total = ref(0)
 const queryParams = ref({
-  current: 1,
-  size: 10,
+  page: 1,
+  pageSize: 10,
   keyword: ''
 })
 
@@ -185,7 +185,7 @@ async function fetchData() {
   loading.value = true
   try {
     const res = await agentApi.getAgentList(queryParams.value)
-    agents.value = res.records
+    agents.value = res.items
     total.value = res.total
   } finally {
     loading.value = false
@@ -195,8 +195,8 @@ async function fetchData() {
 async function fetchAllPolicies() {
   try {
     // 只获取 Agent 级策略
-    const res = await policyApi.getPolicyList({ current: 1, size: 100, scope: 'AGENT' })
-    allPolicies.value = res.records
+    const res = await policyApi.getPolicyList({ page: 1, pageSize: 100, scope: 'AGENT' })
+    allPolicies.value = res.items
   } catch (e) {
     // error handled by interceptor
   }
@@ -446,12 +446,12 @@ async function handleToggleStatus(agent: Agent) {
 }
 
 function handleSearch() {
-  queryParams.value.current = 1
+  queryParams.value.page = 1
   fetchData()
 }
 
 function handlePageChange(page: number) {
-  queryParams.value.current = page
+  queryParams.value.page = page
   fetchData()
 }
 
@@ -459,8 +459,8 @@ function handlePageChange(page: number) {
  * 每页条数变化
  */
 function handleSizeChange(size: number) {
-  queryParams.value.size = size
-  queryParams.value.current = 1
+  queryParams.value.pageSize = size
+  queryParams.value.page = 1
   fetchData()
 }
 
@@ -605,8 +605,8 @@ onMounted(() => {
       </el-table>
 
       <el-pagination
-        v-model:current-page="queryParams.current"
-        v-model:page-size="queryParams.size"
+        v-model:current-page="queryParams.page"
+        v-model:page-size="queryParams.pageSize"
         :total="total"
         :page-sizes="[10, 20, 50, 100]"
         layout="total, sizes, prev, pager, next, jumper"

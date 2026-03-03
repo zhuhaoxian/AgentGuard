@@ -6,6 +6,10 @@ import {
   TokenStatsQuery,
   UsageTrendQuery,
   RpmStatsQuery,
+  StatsOverviewQuery,
+  AgentUsageRankQuery,
+  TrendsQuery,
+  AgentTrendsQuery,
 } from './stats.types';
 
 const statsService = new StatsService(prisma);
@@ -43,6 +47,42 @@ export async function statsRoutes(app: FastifyInstance) {
     '/stats/overall',
     async (request, reply) => {
       const stats = await statsService.getOverallStats(request.query.agentId);
+      return ResponseUtil.success(stats);
+    }
+  );
+
+  // 获取使用统计概览
+  app.get<{ Querystring: StatsOverviewQuery }>(
+    '/stats/overview',
+    async (request, reply) => {
+      const stats = await statsService.getOverview(request.query);
+      return ResponseUtil.success(stats);
+    }
+  );
+
+  // 获取Agent使用排行
+  app.get<{ Querystring: AgentUsageRankQuery }>(
+    '/stats/top-agents',
+    async (request, reply) => {
+      const stats = await statsService.getTopAgents(request.query);
+      return ResponseUtil.success(stats);
+    }
+  );
+
+  // 获取使用趋势（兼容旧接口）
+  app.get<{ Querystring: TrendsQuery }>(
+    '/stats/trends',
+    async (request, reply) => {
+      const stats = await statsService.getTrends(request.query);
+      return ResponseUtil.success(stats);
+    }
+  );
+
+  // 获取Agent使用趋势（兼容旧接口）
+  app.get<{ Querystring: AgentTrendsQuery }>(
+    '/stats/agent-trends',
+    async (request, reply) => {
+      const stats = await statsService.getAgentTrends(request.query);
       return ResponseUtil.success(stats);
     }
   );

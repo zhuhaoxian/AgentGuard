@@ -5,9 +5,9 @@ export interface Result<T = any> {
 }
 
 export interface PageResult<T> {
-  records: T[]
+  items: T[]
   total: number
-  size: number
-  current: number
-  pages: number
+  pageSize: number
+  page: number
+  totalPages: number
 }
