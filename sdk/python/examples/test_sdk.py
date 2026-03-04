@@ -1,7 +1,7 @@
 """AgentGuard SDK 测试示例"""
 
 import os
-from agentguard import AgentGuard, ApiInterceptor
+from agentguard_zhx import AgentGuardOpenAI, AgentGuardHTTP
 
 # 设置环境变量
 os.environ["AGENTGUARD_API_KEY"] = "test-agent-key-12345"
@@ -12,7 +12,7 @@ def test_llm_call():
     """测试 LLM 调用"""
     print("=== 测试 LLM 调用 ===")
 
-    client = AgentGuard()
+    client = AgentGuardOpenAI()
 
     response = client.chat.completions.create(
         model="gpt-3.5-turbo",
@@ -30,7 +30,7 @@ def test_llm_stream():
     """测试流式响应"""
     print("\n=== 测试流式响应 ===")
 
-    client = AgentGuard()
+    client = AgentGuardOpenAI()
 
     stream = client.chat.completions.create(
         model="gpt-3.5-turbo",
@@ -49,7 +49,7 @@ def test_api_call():
     """测试 API 调用拦截"""
     print("\n=== 测试 API 调用拦截 ===")
 
-    interceptor = ApiInterceptor()
+    interceptor = AgentGuardHTTP()
 
     # 示例：调用一个测试 API
     response = interceptor.get("https://httpbin.org/get")

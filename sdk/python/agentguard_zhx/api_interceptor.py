@@ -5,9 +5,9 @@ from typing import Optional, Dict, Any
 import httpx
 
 
-class ApiInterceptor:
+class AgentGuardHTTP:
     """
-    API 拦截器 - 拦截 HTTP 请求并转发到 AgentGuard
+    AgentGuard HTTP 拦截器 - 拦截 HTTP 请求并转发到 AgentGuard
     """
 
     def __init__(
