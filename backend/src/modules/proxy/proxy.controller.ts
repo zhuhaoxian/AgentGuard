@@ -1,6 +1,8 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { ProxyService } from './proxy.service';
 import { authMiddleware } from '@common/middleware/auth.middleware';
+import { policyMiddleware } from '@common/middleware/policy.middleware';
+import { EncryptionUtil } from '@common/utils/encryption.util';
 import type { ChatCompletionRequest, ModelsResponse } from './proxy.types';
 
 const proxyService = new ProxyService();
@@ -8,6 +10,9 @@ const proxyService = new ProxyService();
 export async function proxyRoutes(app: FastifyInstance) {
   // 注册认证中间件
   app.addHook('preHandler', authMiddleware);
+
+  // 注册策略评估中间件（在认证之后）
+  app.addHook('preHandler', policyMiddleware);
 
   /**
    * POST /v1/chat/completions
@@ -41,13 +46,17 @@ export async function proxyRoutes(app: FastifyInstance) {
         });
       }
 
+      // 解密 API Key（参考旧代码：ProxyServiceImpl.java 中使用 encryptionUtil.decrypt）
+      const decryptedApiKey = EncryptionUtil.decryptString(agent.llmApiKey);
+
       // 转发请求
       return await proxyService.forwardChatCompletion(
         agent.id,
-        agent.llmApiKey,
+        decryptedApiKey,
         agent.llmBaseUrl,
         requestBody,
-        reply
+        reply,
+        request  // 传递 request 以获取策略信息
       );
     }
   );

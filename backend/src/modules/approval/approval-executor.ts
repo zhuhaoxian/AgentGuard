@@ -1,14 +1,59 @@
 import axios from 'axios';
 import { PrismaClient } from '@prisma/client';
 import { ApprovalService } from './approval.service';
+import { approvalEventManager } from './approval-event';
+import { EncryptionUtil } from '@common/utils/encryption.util';
 
 export class ApprovalExecutor {
   private prisma: PrismaClient;
   private approvalService: ApprovalService;
+  private autoExecuteEnabled: boolean = true; // 默认启用自动执行
 
   constructor(prisma: PrismaClient) {
     this.prisma = prisma;
     this.approvalService = new ApprovalService(prisma);
+
+    // 注册事件监听器（参考旧代码：ApprovalEventListener.java:29-40）
+    this.registerEventListeners();
+  }
+
+  /**
+   * 注册审批事件监听器
+   */
+  private registerEventListeners(): void {
+    approvalEventManager.onApprovalApproved((approvalId: string) => {
+      console.log(`收到审批通过事件，准备异步执行: approvalId=${approvalId}`);
+
+      // 检查是否配置为自动执行（参考旧代码：ApprovalEventListener.java:35-39）
+      if (this.autoExecuteEnabled) {
+        this.executeApprovalAsync(approvalId);
+      } else {
+        console.log(`自动执行已禁用，跳过执行: approvalId=${approvalId}`);
+      }
+    });
+  }
+
+  /**
+   * 异步执行审批请求
+   */
+  private executeApprovalAsync(approvalId: string): void {
+    this.executeApproval(approvalId).catch(error => {
+      console.error(`异步执行审批失败 ${approvalId}:`, error);
+    });
+  }
+
+  /**
+   * 检查自动执行是否启用
+   */
+  isAutoExecuteEnabled(): boolean {
+    return this.autoExecuteEnabled;
+  }
+
+  /**
+   * 设置自动执行开关
+   */
+  setAutoExecuteEnabled(enabled: boolean): void {
+    this.autoExecuteEnabled = enabled;
   }
 
   /**
@@ -41,7 +86,8 @@ export class ApprovalExecutor {
 
       // 构建请求
       const llmBaseUrl = agent.llmBaseUrl || 'https://api.openai.com';
-      const llmApiKey = agent.llmApiKey;
+      // 解密 API Key（参考旧代码：ApprovalExecutorImpl.java 中使用 encryptionUtil.decrypt）
+      const llmApiKey = EncryptionUtil.decryptString(agent.llmApiKey);
 
       const response = await axios.post(
         `${llmBaseUrl}/v1/chat/completions`,

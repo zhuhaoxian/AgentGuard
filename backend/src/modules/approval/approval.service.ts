@@ -12,6 +12,7 @@ import {
   ApprovalStatusResponse,
 } from './approval.types';
 import { formatDateTime } from '../../common/utils/date.util';
+import { approvalEventManager } from './approval-event';
 
 export class ApprovalService {
   private prisma: PrismaClient;
@@ -150,6 +151,10 @@ export class ApprovalService {
         agent: true,
       },
     });
+
+    // 发布审批通过事件（参考旧代码：ApprovalServiceImpl.java:136-137）
+    console.log(`发布审批通过事件: approvalId=${id}`);
+    approvalEventManager.emitApprovalApproved(id);
 
     return this.toApprovalResponse(updatedApproval);
   }

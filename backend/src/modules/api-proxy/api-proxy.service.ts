@@ -1,5 +1,5 @@
 import axios, { AxiosResponse, Method } from 'axios';
-import { FastifyReply } from 'fastify';
+import { FastifyReply, FastifyRequest } from 'fastify';
 import type { ApiProxyRequest } from './api-proxy.types';
 import { LogService } from '../log/log.service';
 
@@ -12,12 +12,20 @@ export class ApiProxyService {
   async forwardApiRequest(
     agentId: string,
     proxyRequest: ApiProxyRequest,
-    reply: FastifyReply
+    reply: FastifyReply,
+    request?: FastifyRequest
   ) {
     const startTime = Date.now();
     const { url, method, headers, body, timeout } = proxyRequest;
 
+    // 提取策略信息（参考旧代码：ProxyServiceImpl.java:863-909）
+    const policySnapshot = request?.policyResult?.matchedPolicy;
+    const approvalRequestId = request?.approvalRequestId;
+
     try {
+      // 验证目标URL（参考旧代码：ProxyServiceImpl.java:739）
+      this.validateTargetUrl(url);
+
       // 发起请求
       const response: AxiosResponse = await axios({
         url,
@@ -40,7 +48,9 @@ export class ApiProxyService {
         requestHeaders: headers,
         responseBody: response.data,
         responseStatus: 'SUCCESS',
-        responseTimeMs: responseTime
+        responseTimeMs: responseTime,
+        policySnapshot,
+        approvalRequestId
       });
 
       // 返回响应
@@ -61,7 +71,9 @@ export class ApiProxyService {
         requestHeaders: headers,
         responseBody: error.response?.data || error.message,
         responseStatus: 'ERROR',
-        responseTimeMs: responseTime
+        responseTimeMs: responseTime,
+        policySnapshot,
+        approvalRequestId
       });
 
       // 返回错误响应
@@ -97,5 +109,64 @@ export class ApiProxyService {
     }
 
     return filtered;
+  }
+
+  /**
+   * 验证目标URL（参考旧代码：ProxyServiceImpl.java:687-702）
+   * 拒绝内网地址访问
+   */
+  private validateTargetUrl(url: string): void {
+    if (!url || url.trim() === '') {
+      throw new Error('Invalid target URL: URL cannot be empty');
+    }
+
+    try {
+      const urlObj = new URL(url);
+      const host = urlObj.hostname;
+
+      // 拒绝内网地址（参考旧代码：ProxyServiceImpl.java:696-698）
+      if (this.isInternalAddress(host)) {
+        throw new Error('Internal address access is forbidden');
+      }
+    } catch (error: any) {
+      if (error.message === 'Internal address access is forbidden') {
+        throw error;
+      }
+      throw new Error('Invalid target URL format');
+    }
+  }
+
+  /**
+   * 检查是否为内网地址（参考旧代码：ProxyServiceImpl.java:710-728）
+   */
+  private isInternalAddress(host: string): boolean {
+    if (!host || host.trim() === '') {
+      return false;
+    }
+
+    // 检查 localhost（参考旧代码：ProxyServiceImpl.java:716-718）
+    if (host.toLowerCase() === 'localhost' || host === '127.0.0.1' || host === '::1') {
+      return true;
+    }
+
+    // 检查私有IP段（参考旧代码：ProxyServiceImpl.java:720-727）
+    // 10.0.0.0/8
+    if (/^10\./.test(host)) {
+      return true;
+    }
+    // 172.16.0.0/12
+    if (/^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(host)) {
+      return true;
+    }
+    // 192.168.0.0/16
+    if (/^192\.168\./.test(host)) {
+      return true;
+    }
+    // 169.254.0.0/16 (链路本地地址)
+    if (/^169\.254\./.test(host)) {
+      return true;
+    }
+
+    return false;
   }
 }

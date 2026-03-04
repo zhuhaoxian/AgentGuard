@@ -41,7 +41,8 @@ export interface PolicyEvaluationResult {
 export interface RateLimitConfig {
   maxRequests: number;
   windowMs: number;
-  keyExtractor?: 'agentId' | 'ip' | 'custom';
+  keyExtractor?: string; // 支持 "ip", "header:X-Header-Name", "body:fieldName" 等格式（参考旧代码：RateLimiterServiceImpl.java:115-157）
+  fallbackAction?: 'CACHE' | 'SIMPLIFIED' | 'DENY'; // 降级策略
 }
 
 export interface RateLimitResult {

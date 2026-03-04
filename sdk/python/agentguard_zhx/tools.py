@@ -122,12 +122,19 @@ class AgentGuardTools:
                 if status_response.execution_result:
                     # 从执行结果中提取内容
                     content = self._extract_content_from_result(status_response.execution_result)
+
+                    # 确保 execution_result 可以被 JSON 序列化
+                    # 如果是字典，直接使用；否则转换为字符串
+                    serializable_result = status_response.execution_result
+                    if not isinstance(serializable_result, (dict, list, str, int, float, bool, type(None))):
+                        serializable_result = str(serializable_result)
+
                     return {
                         "status": "approved",
                         "execution_status": "success",
                         "message": "审批通过，执行成功",
                         "content": content,
-                        "executionResult": status_response.execution_result
+                        "executionResult": serializable_result
                     }
                 else:
                     return {

@@ -111,7 +111,7 @@ class ApprovalClient:
         Raises:
             Exception: 如果请求失败
         """
-        url = f"{self.agentguard_base_url}/api/approvals/{approval_id}/status"
+        url = f"{self.agentguard_base_url}/api/v1/approvals/{approval_id}/status"
         headers = {
             "X-AgentGuard-Auth": self.agentguard_api_key
         }
@@ -155,7 +155,7 @@ class ApprovalClient:
         Raises:
             Exception: 如果请求失败
         """
-        url = f"{self.agentguard_base_url}/api/approvals/{approval_id}/reason"
+        url = f"{self.agentguard_base_url}/api/v1/approvals/{approval_id}/reason"
         headers = {
             "X-AgentGuard-Auth": self.agentguard_api_key,
             "Content-Type": "application/json"

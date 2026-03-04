@@ -18,13 +18,19 @@ const PUBLIC_ROUTES = [
   '/health',
   '/api/v1/auth/login',
   '/api/v1/auth/register',
+  '/sockjs-node', // 前端开发服务器 WebSocket
 ];
 
 // API 代理路由(使用 API Key 认证)
 const API_PROXY_ROUTES = [
+  '/v1', // LLM 代理接口 (如 /v1/chat/completions)
   '/api/v1/proxy',
   '/api/v1/api-proxy',
+  '/api/proxy', // API 代理接口（SDK 使用）
 ];
+
+// 审批接口 - Agent SDK 轮询使用(通过审批 ID 访问,无需 JWT)
+const APPROVAL_ROUTES_PATTERN = /^\/api\/v1\/approvals\/[^/]+\/(status|reason)$/;
 
 export async function jwtAuthMiddleware(
   request: FastifyRequest,
@@ -39,6 +45,11 @@ export async function jwtAuthMiddleware(
 
   // API 代理路由,使用 API Key 认证(由 proxy 模块处理)
   if (API_PROXY_ROUTES.some(route => url.startsWith(route))) {
+    return;
+  }
+
+  // 审批状态和理由接口,Agent SDK 轮询使用(通过审批 ID 访问,无需 JWT)
+  if (APPROVAL_ROUTES_PATTERN.test(url)) {
     return;
   }
 

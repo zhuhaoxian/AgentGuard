@@ -168,7 +168,7 @@ export class PolicyEngine {
   }
 
   /**
-   * 处理限流策略
+   * 处理限流策略（参考旧代码：PolicyEngineImpl.java）
    */
   private handleRateLimit(
     policy: any,
@@ -179,11 +179,12 @@ export class PolicyEngine {
     const rateLimitConfig: RateLimitConfig = {
       maxRequests: conditions.maxRequests || 100,
       windowMs: conditions.windowMs || 60000, // 默认 1 分钟
-      keyExtractor: conditions.keyExtractor || 'agentId'
+      keyExtractor: conditions.keyExtractor,
+      fallbackAction: conditions.fallbackAction
     };
 
-    // 生成限流 key
-    const key = this.generateRateLimitKey(context, rateLimitConfig.keyExtractor);
+    // 使用 RateLimiter 的动态键提取方法（参考旧代码：RateLimiterServiceImpl.java:115-157）
+    const key = this.rateLimiter.generateRateLimitKey(context, rateLimitConfig.keyExtractor);
 
     // 检查限流
     const result = this.rateLimiter.check(key, rateLimitConfig);
@@ -196,6 +197,17 @@ export class PolicyEngine {
         reason: `Rate limit passed: ${result.remaining} remaining`
       };
     } else {
+      // 如果配置了降级策略，返回降级响应
+      if (rateLimitConfig.fallbackAction) {
+        return {
+          allowed: false,
+          matchedPolicy: policy,
+          action: 'RATE_LIMIT',
+          rateLimitExceeded: true,
+          reason: `Rate limit exceeded. Fallback action: ${rateLimitConfig.fallbackAction}. Reset at ${new Date(result.resetTime).toISOString()}`
+        };
+      }
+
       return {
         allowed: false,
         matchedPolicy: policy,
@@ -203,23 +215,6 @@ export class PolicyEngine {
         rateLimitExceeded: true,
         reason: `Rate limit exceeded. Reset at ${new Date(result.resetTime).toISOString()}`
       };
-    }
-  }
-
-  /**
-   * 生成限流 key
-   */
-  private generateRateLimitKey(
-    context: PolicyEvaluationContext,
-    keyExtractor: string = 'agentId'
-  ): string {
-    switch (keyExtractor) {
-      case 'agentId':
-        return `ratelimit:agent:${context.agentId}`;
-      case 'ip':
-        return `ratelimit:ip:${context.headers?.['x-forwarded-for'] || 'unknown'}`;
-      default:
-        return `ratelimit:${context.agentId}`;
     }
   }
 

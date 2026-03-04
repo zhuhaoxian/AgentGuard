@@ -1,13 +1,15 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { ApiProxyService } from './api-proxy.service';
 import { authMiddleware } from '@common/middleware/auth.middleware';
+import { policyMiddleware } from '@common/middleware/policy.middleware';
 import type { ApiProxyRequest } from './api-proxy.types';
 
 const apiProxyService = new ApiProxyService();
 
 export async function apiProxyRoutes(app: FastifyInstance) {
-  // 注册认证中间件
+  // 注册认证中间件和策略评估中间件
   app.addHook('preHandler', authMiddleware);
+  app.addHook('preHandler', policyMiddleware);
 
   /**
    * POST /api/proxy
@@ -34,7 +36,8 @@ export async function apiProxyRoutes(app: FastifyInstance) {
       return await apiProxyService.forwardApiRequest(
         agent.id,
         proxyRequest,
-        reply
+        reply,
+        request
       );
     }
   );

@@ -32,6 +32,9 @@ export interface ChatCompletionRequest {
   tools?: Tool[];
   tool_choice?: string | { type: 'function'; function: { name: string } };
   response_format?: { type: 'text' | 'json_object' };
+  stream_options?: {
+    include_usage?: boolean;
+  };
 }
 
 export interface Tool {
@@ -72,6 +75,11 @@ export interface ChatCompletionChunk {
   created: number;
   model: string;
   choices: ChatCompletionChunkChoice[];
+  usage?: {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+  };
   system_fingerprint?: string;
 }
 
